@@ -7,7 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "generate:app": "node scripts/generate-app-metadata.mjs"
+    "generate:app": "node scripts/generate-app-metadata.mjs",
+    "validate:app": "node scripts/validate-app-metadata.mjs"
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"
