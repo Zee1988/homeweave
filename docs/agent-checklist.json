@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "principles": [
+    "Home Assistant remains the source of truth for device state",
+    "AI proposes; deterministic server-side services authorize, execute and verify",
+    "All control entry points share ToolRegistry and PolicyEngine",
+    "Never equate command submission with verified success",
+    "High-risk operations require explicit confirmation and are not autonomous in MVP",
+    "Use one Expo + React Native + React Native Web client under apps/mobile; do not create a second web UI without an ADR",
+    "Native refresh tokens use secure storage; web refresh sessions use HttpOnly secure cookies and CSRF protection",
+    "Reliable tasks execute on the server, never depend on mobile background execution",
+    "Validate iOS, Android and Web targets separately; Web export alone does not prove native builds work"
+  ],
+  "mvp_acceptance": [
+    "First-run admin setup and secure authentication",
+    "Home Assistant connection test and idempotent entity sync",
+    "Capability-aware dashboard and controls",
+    "Post-command state verification with succeeded/failed/unknown states",
+    "Fast-Path works without an LLM for supported commands",
+    "Structured LLM plans are schema-validated server-side",
+    "Task steps and audit summaries persist across restart",
+    "Secrets are redacted from logs and never sent to the browser",
+    "Docker deployment includes health checks and persistent storage",
+    "The same apps/mobile project exports Web and builds iOS and Android targets",
+    "Server URL can be configured and switched without leaking or mixing cached household data",
+    "Offline state is marked stale and physical device commands are not silently queued",
+    "Native and Web authentication storage follow platform-specific security policies"
+  ]
+}

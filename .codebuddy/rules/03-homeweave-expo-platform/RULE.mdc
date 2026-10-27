@@ -1,0 +1,19 @@
+---
+description: Apply when implementing Expo, React Native, React Native Web or native mobile platform features.
+alwaysApply: false
+enabled: true
+updatedAt: 2026-10-27T10:00:00+08:00
+---
+
+# HomeWeave Expo Cross-Platform Rules
+
+Apply this rule when touching `apps/mobile/`, Expo configuration, platform adapters, notification or native build/release features.
+
+- Use Expo-compatible package versions; prefer `npx expo install` for Expo/React Native dependencies and check compatibility against the project SDK.
+- Keep platform-independent behavior in shared components/domain packages. Isolate required differences in `.web.tsx`, `.native.tsx`, `.ios.tsx`, `.android.tsx` or explicit platform adapters.
+- Do not assume native APIs exist on Web. Check capability and provide a clear fallback.
+- Never depend on the mobile app staying alive in the background for reliable household automation; those jobs belong on the backend.
+- Implement loading, empty, error, offline, stale, unauthorized and partial-result UI states.
+- Keep secrets out of client bundles. Use SecureStore for native-side sensitive tokens and secure server-managed sessions for Web.
+- Test shared UI and domain behavior plus platform-specific paths. State clearly if simulator/device builds were not executed.
+- Follow `docs/16_MOBILE_APP_ARCHITECTURE.md` and `docs/09_UI_UX_SPEC.md`.

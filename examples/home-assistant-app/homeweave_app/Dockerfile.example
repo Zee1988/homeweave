@@ -1,0 +1,19 @@
+# Template only. Pin a tested Home Assistant base image and validate against the current
+# official Apps example before production. The final image build must include the built
+# NestJS API, Prisma runtime assets and (if enabled) the React Native Web export.
+FROM ghcr.io/home-assistant/base:3.24
+
+# The final implementation must install a supported Node.js runtime and required
+# compatibility libraries for the target architecture. Do not copy a host node_modules.
+WORKDIR /opt/homeweave
+COPY dist/ ./dist/
+COPY package.json ./package.json
+COPY prisma/ ./prisma/
+
+ENV NODE_ENV=production
+ENV APP_PORT=8099
+ENV DATABASE_URL=file:/data/homeweave.db
+
+# Replace with the real entrypoint after implementation. Keep Supervisor-provided
+# secrets out of logs and do not enable the app until this command is valid.
+CMD ["node", "dist/main.js"]

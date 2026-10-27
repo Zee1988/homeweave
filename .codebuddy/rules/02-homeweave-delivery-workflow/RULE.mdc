@@ -1,0 +1,21 @@
+---
+description: HomeWeave staged implementation, test and reporting workflow. Always apply.
+alwaysApply: true
+enabled: true
+updatedAt: 2026-10-27T10:00:00+08:00
+---
+
+# HomeWeave Delivery Workflow
+
+1. Before edits, inspect repository structure, Git status, uncommitted changes, package manager, scripts, tests and relevant docs.
+2. For broad tasks, state a small implementation plan with affected files and acceptance criteria before editing.
+3. Prefer incremental, reviewable changes. Implement only the current roadmap phase.
+4. Do not add a new dependency unless its purpose is clear and compatibility is checked.
+5. After changes, run the relevant commands that actually exist in the repository: format/lint, typecheck, unit and integration tests. Run Expo dependency/doctor checks when supported by the SDK.
+6. Never state that tests passed if they were not run. Distinguish passed, failed, skipped and not available.
+7. Sync docs, OpenAPI, `.env.example` and tests when changing API, database schema, tools, permission policy or environment variables.
+8. Report: summary, files changed, test commands/results, remaining work, risks, and the smallest next task.
+9. Phase 0 is repository review and planning; do not modify business code in Phase 0 unless explicitly asked.
+10. Prefer Home Assistant OS App deployment for the home-hosted backend; maintain Docker Compose as fallback for Home Assistant Container. Follow docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md.
+11. Validate Home Assistant App metadata and current official builder actions; never claim HAOS install/upgrade passed without testing on real HAOS.
+12. Treat Supervisor API proxy credentials as high privilege; never expose them to browser/mobile clients or logs. Ingress is not a native-app API credential.

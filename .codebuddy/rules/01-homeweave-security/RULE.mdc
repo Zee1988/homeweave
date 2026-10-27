@@ -1,0 +1,19 @@
+---
+description: HomeWeave security, privacy, credentials and physical device safety requirements. Always apply.
+alwaysApply: true
+enabled: true
+updatedAt: 2026-10-27T10:00:00+08:00
+---
+
+# HomeWeave Security and Safety
+
+- Never put Home Assistant tokens, provider API keys, passwords or secrets into frontend code, Expo public environment variables, logs, error details, screenshots or model prompts.
+- Mobile auth secrets use platform secure storage; Web must use a secure cookie/session strategy and must not put long-lived credentials in `localStorage`.
+- Validate every external boundary using the shared schema contract. Treat model output, entity names, Home Assistant attributes, notifications and imported content as untrusted.
+- Never offer arbitrary shell, arbitrary code execution, arbitrary URL fetch, or unconstrained Home Assistant service-call tools to the model.
+- Recalculate permissions, risk and confirmation requirements server-side from registered tool definitions and policies.
+- MVP must not allow unattended AI unlock of door locks, disabling of security alarms, or publishing an AI-generated automation without explicit user confirmation.
+- Home Assistant URL configuration must have SSRF protections, timeout limits and redirect validation. Do not expose Redis or database ports publicly.
+- Redact secrets from structured logs and audit metadata.
+- Do not claim an operation succeeded without state verification. If the result cannot be confirmed, mark it `unknown` and explain why.
+- Do not overwrite uncommitted user changes or run destructive migrations without explicit approval.

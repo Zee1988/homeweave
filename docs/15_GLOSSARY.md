@@ -1,0 +1,32 @@
+# 15 — 术语表
+
+- **Home Assistant (HA)**：本产品首要的家庭设备与自动化集成平台。
+- **Entity / 实体**：HA 中代表一个设备能力或状态的对象，例如某盏灯或温度传感器。
+- **Device / 设备**：承载一个或多个实体的物理/逻辑设备。
+- **Area / 区域**：HA 中表示房间或空间的分类。
+- **Capability / 能力**：实体当前真实支持的可执行/读取操作。
+- **Dashboard / 仪表盘**：用于查看和控制设备的 UI 布局。
+- **Scene / 场景**：一组目标状态或 HA 场景调用，用于一次性执行。
+- **Automation / 自动化规则**：由触发器、条件和动作组成的长期规则。
+- **Fast-Path**：确定性解析明确简单命令的低延迟路径。
+- **Agent Planning**：LLM 根据目标和有限上下文提出结构化执行计划。
+- **Tool Registry**：已注册并有 schema、权限、风险与处理器的工具目录。
+- **Policy Engine**：服务端决定调用是否被允许、需不需要确认的策略模块。
+- **Task / 任务**：一个用户目标及其执行状态、步骤和结果。
+- **Task Step / 步骤**：任务中一次工具调用或动作。
+- **Verification / 验证**：通过 HA 实际状态确认目标是否达到。
+- **Unknown**：请求可能已发出，但不能可靠确认最终状态。
+- **Stale**：状态快照可能过期，不能当成实时状态。
+- **Source of Truth**：权威事实来源；本产品中设备当前状态以 HA 为准。
+- **Prompt Injection**：外部内容试图影响模型越过原始指令或安全边界。
+- **MCP**：Model Context Protocol；作为可选扩展入口，必须复用同一安全工具层。
+- **Idempotency**：相同请求重复执行不会造成重复副作用或错误状态。
+- **ADR**：Architecture Decision Record，架构决策记录。
+
+- **Expo Universal App**：单一 Expo/React Native 工程，面向 iOS、Android，并可用 React Native Web 提供 Web 版本。
+- **React Native Web**：将 React Native primitives 映射到浏览器的实现；不代表原生平台能力与 Web 完全一致。
+- **Expo Router**：基于文件的跨平台路由。
+- **Development Build**：包含应用自身原生配置/模块的开发客户端，用于替代长期依赖 Expo Go 的生产开发方式。
+- **EAS Build**：Expo 提供的云端/自动化原生构建服务。
+- **Platform Adapter**：在统一接口下封装原生与 Web 的差异，例如 SecureStore 与 cookie、Push 与 WebSocket。
+- **Refresh Token Rotation**：每次刷新时换发新 refresh token，并使旧 token 失效。

@@ -1,0 +1,324 @@
+openapi: 3.1.0
+info:
+  title: HomeWeave API
+  version: 1.0.0
+  description: Initial contract template. Business endpoints are shared across Expo native and Web clients. Native uses bearer access tokens; Web uses secure cookie sessions with CSRF protection.
+servers:
+  - url: /api/v1
+security:
+  - sessionCookie: []
+  - bearerAuth: []
+paths:
+  /setup/status:
+    get:
+      summary: Get initial setup status
+      security: []
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [initialized]
+                properties:
+                  initialized: { type: boolean }
+  /health/live:
+    get:
+      summary: Liveness check
+      security: []
+      responses:
+        '200': { description: Process is alive }
+  /auth/login:
+    post:
+      summary: Login (platform adapter determines cookie/body token delivery)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password, clientType]
+              properties:
+                username: { type: string }
+                password: { type: string, writeOnly: true }
+                clientType: { type: string, enum: [ios, android, web] }
+                installationId: { type: string }
+      responses:
+        '200':
+          description: Authenticated; native clients receive a short-lived access token and rotating refresh token in the response body, while Web receives HttpOnly secure cookies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string, writeOnly: true }
+                  expiresIn: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/refresh:
+    post:
+      summary: Refresh auth session; rotate native refresh token or use secure Web cookie
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string, writeOnly: true }
+      responses:
+        '200':
+          description: Session refreshed; native response includes rotated refresh token, Web response sets secure cookies
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  refreshToken: { type: string, writeOnly: true }
+                  expiresIn: { type: integer }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      summary: Revoke the current auth session and clear Web cookies
+      responses:
+        '204': { description: Session revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      summary: Get current user and permission summary
+      responses:
+        '200': { description: Current user }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/sessions/revoke:
+    post:
+      summary: Revoke the current or an authorized selected session
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionId: { type: string }
+      responses:
+        '204': { description: Session revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+
+  /client-installations/register:
+    post:
+      summary: Register a client installation and optional push token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [installationId, platform]
+              properties:
+                installationId: { type: string }
+                platform: { type: string, enum: [ios, android, web] }
+                pushToken: { type: string, writeOnly: true }
+                notificationsEnabled: { type: boolean }
+      responses:
+        '200': { description: Installation registered }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /client-installations/{id}:
+    patch:
+      summary: Update a client installation or rotate its push token
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pushToken: { type: string, writeOnly: true }
+                notificationsEnabled: { type: boolean }
+      responses:
+        '200': { description: Installation updated }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      summary: Revoke a client installation and disable its push registration
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '204': { description: Installation revoked }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /health/ready:
+    get:
+      summary: Readiness check
+      security: []
+      responses:
+        '200': { description: Service is ready }
+        '503': { description: Service is not ready }
+  /home/summary:
+    get:
+      summary: Get home summary
+      responses:
+        '200':
+          description: Home summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  integrationStatus: { type: string }
+                  observedAt: { type: string, format: date-time }
+                  stale: { type: boolean }
+                  areas:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+  /entities:
+    get:
+      summary: List normalized entities
+      parameters:
+        - in: query
+          name: areaId
+          schema: { type: string }
+        - in: query
+          name: domain
+          schema: { type: string }
+      responses:
+        '200':
+          description: Entity list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Entity' }
+  /entities/{id}/commands:
+    post:
+      summary: Submit a validated device command
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [command, parameters, idempotencyKey]
+              properties:
+                command: { type: string }
+                parameters: { type: object, additionalProperties: true }
+                idempotencyKey: { type: string, minLength: 8, maxLength: 200 }
+      responses:
+        '202':
+          description: Command accepted for execution; not proof of success
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commandId, status]
+                properties:
+                  commandId: { type: string }
+                  status: { type: string, enum: [queued, running, needs_confirmation] }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { description: Conflict, stale plan, or idempotency conflict }
+  /assistant/messages:
+    post:
+      summary: Submit a message for answer, query, or planning
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                conversationId: { type: string }
+                message: { type: string, minLength: 1, maxLength: 10000 }
+      responses:
+        '200':
+          description: Answer or structured plan response
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mode]
+                properties:
+                  mode:
+                    type: string
+                    enum: [answer, clarification_required, plan_ready, needs_confirmation, executing]
+                  conversationId: { type: string }
+                  taskId: { type: string }
+                  message: { type: string }
+                  plan: { type: object, additionalProperties: true }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: session
+  schemas:
+    Entity:
+      type: object
+      required: [id, externalId, domain, name, capabilities, stale]
+      properties:
+        id: { type: string }
+        externalId: { type: string }
+        domain: { type: string }
+        name: { type: string }
+        areaId: { type: [string, 'null'] }
+        state: {}
+        observedAt: { type: [string, 'null'], format: date-time }
+        stale: { type: boolean }
+        capabilities:
+          type: array
+          items: { type: string }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, requestId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            requestId: { type: string }
+            details: { type: object, additionalProperties: true }
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }

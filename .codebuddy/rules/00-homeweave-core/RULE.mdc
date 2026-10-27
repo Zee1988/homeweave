@@ -1,0 +1,20 @@
+---
+description: HomeWeave core architecture, module boundaries and implementation principles. Always apply.
+alwaysApply: true
+enabled: true
+updatedAt: 2026-10-27T10:00:00+08:00
+---
+
+# HomeWeave Core Architecture
+
+- Read `AGENTS.md` and relevant `docs/` before changes; these are the canonical engineering requirements.
+- Product: HomeWeave（织家）, AI Home Operating System based on Home Assistant.
+- Client: Expo + React Native + TypeScript in `apps/mobile/`; iOS/Android share code; React Native Web is the optional Web target.
+- Backend: NestJS + TypeScript in `apps/api/`; pnpm workspaces Monorepo.
+- Shared packages hold API contracts, validation schemas, platform-independent domain logic and design tokens.
+- Home Assistant is the source of truth for live device state. Application DB stores configuration, cached snapshots, tasks and audit history.
+- UI, Agent, MCP and automation must call the same server-side Application Services / Tool Registry / Policy Engine. Do not duplicate device-control paths.
+- Agent handles intent understanding and planning. Deterministic server code owns schema validation, authorization, risk evaluation, execution, audit and verification.
+- Model output never defines its own permissions, risk level or confirmation requirement.
+- A command request being accepted is not proof of device state change. Use `succeeded`, `failed`, `unknown`, or partial-success states based on evidence.
+- Keep changes small and consistent with `docs/11_IMPLEMENTATION_ROADMAP.md`; do not build future phases prematurely.
