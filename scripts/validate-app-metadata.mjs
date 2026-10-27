@@ -16,8 +16,8 @@
  *   - Assertions are made on js-yaml parsed values, never on YAML source formatting.
  *     Single and double quotes are semantically equivalent, so quote style is not checked.
  */
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 import yaml from 'js-yaml';
 
 const ROOT = process.cwd();
@@ -60,7 +60,12 @@ const SUPPORTED_ARCH = ['amd64', 'aarch64'];
 const LOG_LEVELS = ['info', 'debug', 'warn'];
 
 const failures = [];
+const texts = new Map();
 let checksRun = 0;
+
+function toPosix(path) {
+  return path.split(sep).join('/');
+}
 
 function fail(code, file, message) {
   failures.push({ code, file, message });
@@ -94,6 +99,10 @@ function readAndParse(path, label) {
     fail('V1', label, `cannot be read (${error.code || error.message})`);
     return null;
   }
+
+  // The raw text is kept so the placeholder scan can look at the bytes we were given,
+  // even when the YAML body itself failed to parse.
+  texts.set(label, text);
 
   let data;
   try {
@@ -328,6 +337,118 @@ if (config) {
     'V12',
     CONFIG_FILE,
     `options.ha_url must be a string (empty string means Home Assistant auto-discovery), got ${describe(options.ha_url)}`,
+  );
+}
+
+// V13: no generic placeholders may survive into the two generated files. Scope is exactly
+// these two files on purpose: examples/home-assistant-app/*.example keep their <owner> and
+// <repo> tokens deliberately (see examples/README.md), so scanning the whole repo here
+// would fail forever.
+const PLACEHOLDER_LITERALS = [
+  '<owner>',
+  '<repo>',
+  '<maintainer name or contact>',
+  'tree/main',
+];
+
+for (const label of [CONFIG_FILE, REPOSITORY_FILE]) {
+  const text = texts.get(label);
+  if (text === undefined) continue;
+  for (const literal of PLACEHOLDER_LITERALS) {
+    check(!text.includes(literal), 'V13', label, `still contains the placeholder "${literal}"`);
+  }
+}
+
+// V14: a /tree/<branch> source link must point at master. The templates said main, which
+// does not exist in this repository, so the link would 404 for anyone reading the app page.
+// url is optional in config.yaml, so an absent url is not a failure -- but a present one
+// has to be right.
+const TREE_SEGMENT = /\/tree\/([^/\s]+)/;
+
+for (const [label, data] of [
+  [CONFIG_FILE, config],
+  [REPOSITORY_FILE, repository],
+]) {
+  if (!data || typeof data.url !== 'string') continue;
+  const match = TREE_SEGMENT.exec(data.url);
+  if (match) {
+    check(
+      match[1] === 'master',
+      'V14',
+      label,
+      `"url" points at /tree/${match[1]}; the default branch is master, so /tree/${match[1]} would 404`,
+    );
+  }
+}
+
+// V15: exactly one Supervisor-discoverable config file may exist in the repository.
+//
+// Supervisor discovers apps with path.glob("**/config.*") and keeps only paths whose every
+// segment avoids a leading "." and the name "rootfs"; the .example suffix survives purely
+// because it is not in FILE_SUFFIX_CONFIGURATION. A second real config.yaml anywhere in the
+// tree therefore becomes a second app, so uniqueness is asserted rather than reviewed.
+const CONFIG_BASENAME = /^config\.(yaml|yml|json)$/;
+// rootfs is a Supervisor rule. node_modules is NOT: Supervisor scans a clean clone, while
+// this validator also runs on developer machines where a dependency could ship its own
+// config.yaml. Skipping it is a local false-positive guard only -- it cannot mask a real
+// second app, because apps live in tracked directories, never inside node_modules.
+const SKIP_DIRECTORIES = new Set(['rootfs', 'node_modules']);
+const MAX_DEPTH = 12;
+
+function findConfigCandidates(directory, depth = 0) {
+  const found = [];
+  if (depth > MAX_DEPTH) return found;
+
+  let entries;
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return found; // unreadable or vanished directory: skip it instead of throwing
+  }
+
+  for (const entry of entries) {
+    if (entry.name.startsWith('.') || SKIP_DIRECTORIES.has(entry.name)) continue;
+
+    const full = join(directory, entry.name);
+    let isDirectory = entry.isDirectory();
+    let isFile = entry.isFile();
+
+    if (entry.isSymbolicLink()) {
+      try {
+        const stats = statSync(full);
+        isDirectory = stats.isDirectory();
+        isFile = stats.isFile();
+      } catch {
+        continue; // broken link
+      }
+    }
+
+    if (isDirectory) {
+      found.push(...findConfigCandidates(full, depth + 1));
+    } else if (isFile && CONFIG_BASENAME.test(entry.name)) {
+      found.push(toPosix(relative(ROOT, full)));
+    }
+  }
+
+  return found;
+}
+
+const candidates = findConfigCandidates(ROOT);
+const candidateList = candidates.length > 0 ? candidates.join(', ') : '(none)';
+
+if (
+  check(
+    candidates.length === 1,
+    'V15',
+    CONFIG_FILE,
+    `expected exactly one Supervisor-discoverable config file, found ${candidates.length}: ${candidateList}`,
+  )
+) {
+  check(
+    candidates[0] === CONFIG_FILE,
+    'V15',
+    CONFIG_FILE,
+    `the single discoverable config file must be ${CONFIG_FILE}, found ${candidateList}`,
   );
 }
 
