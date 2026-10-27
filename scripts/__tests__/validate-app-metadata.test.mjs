@@ -22,10 +22,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  REPO_ROOT,
   cleanup,
   makeValidTree,
   runValidator,
   writeConfig,
+  writeExtraConfig,
+  writeRepository,
 } from './fixtures.mjs';
 
 /** Assert a run failed with the given check code and nothing else was assumed. */
@@ -115,4 +118,90 @@ test('V8: a misspelled key (ingresss) is rejected instead of silently dropped', 
   });
 
   assertDetects(runValidator(root), 'V8', 'unknown key ingresss');
+});
+
+// ---------------------------------------------------------------------------------------
+// V15 -- exactly one Supervisor-discoverable config file (ROADMAP success criterion 2).
+// Supervisor discovers apps with glob("**\/config.*"), so a second config.yaml anywhere in
+// the tree becomes a second app: installing the repo would show two entries, one of them
+// pointing at files nobody maintains.
+// ---------------------------------------------------------------------------------------
+test('V15: a second config.yaml outside homeweave_app/ is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeExtraConfig(root, 'nested/config.yaml');
+
+  assertDetects(runValidator(root), 'V15', 'second config.yaml');
+});
+
+// The other half of V15. The skip list (dot-prefixed segments, rootfs) must skip only what
+// Supervisor skips. Pairing this with the case above is what makes the check meaningful: if
+// the skip list were inverted, the previous test would still pass and this one would go red.
+test('V15: dotted and rootfs copies of config.yaml do not count', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeExtraConfig(root, '.hidden/config.yaml');
+  writeExtraConfig(root, 'rootfs/etc/config.yaml');
+
+  const result = runValidator(root);
+
+  assert.notEqual(result.status, null, `validator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 0, `skipped paths must not count, got exit ${result.status}\n${result.stdout}`);
+});
+
+// ---------------------------------------------------------------------------------------
+// V13 -- no generic placeholder may survive into the generated files.
+// Only the url value changes; the three repository keys stay, so V3 cannot mask the signal.
+// The validator does not fail fast, so V13 may appear alongside other codes -- we assert
+// that V13 is reported, not that it is the only failure.
+// ---------------------------------------------------------------------------------------
+test('V13: an angle-bracket owner placeholder in repository.yaml is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.url = 'https://github.com/<owner>/homeweave';
+  });
+
+  assertDetects(runValidator(root), 'V13', 'placeholder owner');
+});
+
+// ---------------------------------------------------------------------------------------
+// V11 -- schema and options are two halves of one contract. Both directions get a case so
+// the check cannot be implemented as "always strict" (which would make every app with an
+// optional setting invalid) or as "always lenient".
+// ---------------------------------------------------------------------------------------
+test('V11: a schema key with no default and no "?" is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.schema.verbose = 'bool';
+  });
+
+  assertDetects(runValidator(root), 'V11', 'schema.verbose without default');
+});
+
+test('V11: an optional schema key ("?") needs no default in options', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.schema.debug_flag = 'bool?';
+  });
+
+  const result = runValidator(root);
+
+  assert.notEqual(result.status, null, `validator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 0, `optional key must not require a default, got exit ${result.status}\n${result.stdout}`);
+});
+
+// ---------------------------------------------------------------------------------------
+// Closing gate: after every fixture above has been cleaned up, the repository tree itself
+// must still validate. This turns "fixtures must never leak into the repo" from a code
+// review habit into an automated conclusion -- a leaked config.yaml fails V15 here.
+// ---------------------------------------------------------------------------------------
+test('closing gate: the repository tree validates with no fixture residue', () => {
+  const result = runValidator(REPO_ROOT);
+
+  assert.notEqual(result.status, null, `validator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 0, `repo tree must validate, got exit ${result.status}\n${result.stdout}`);
+  assert.match(result.stdout, /checks passed/, result.stdout);
 });
