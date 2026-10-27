@@ -6,7 +6,7 @@
     {
       "number": "1",
       "name": "App 元数据与仓库可识别性",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "2",
@@ -44,5 +44,5 @@
     "label": "Advance to the next step",
     "reason": "Phase 1 of 7 · executing"
   },
-  "updated_at": "2026-10-27T06:14:21.054Z"
+  "updated_at": "2026-10-27T06:52:20.060Z"
 }
