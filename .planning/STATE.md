@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: App 元数据与仓库可识别性
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-10-27T06:14:26.876Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-10-27T06:17:30.000Z"
 last_activity: 2026-10-27
-last_activity_desc: Phase 01 execution started
-state_head: b41a42f62f2a7519a5d37b3fc113cc5c0a4d4a14
+last_activity_desc: Completed 01-02 plan (static metadata validator)
+state_head: cb970a06c03bedd8bf30dd5653da0f71cdaa71ae
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 1
+  completed_plans: 2
 ---
 
 # Project State
@@ -28,18 +28,18 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 ## Current Position
 
 Phase: 01 (App 元数据与仓库可识别性) — EXECUTING
-Plan: 2 of 3
-Status: Ready to execute
-Last activity: 2026-10-27 — Phase 01 execution started
+Plan: 3 of 3
+Status: Ready to execute (01-03 负向测试)
+Last activity: 2026-10-27 — Completed 01-02 plan (static metadata validator)
 
 Progress: [░░░░░░░░░░] 0%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 0
-- Average duration: -
-- Total execution time: 0 hours
+- Total plans completed: 2
+- Average duration: ~11 min
+- Total execution time: ~0.4 hours
 
 **By Phase:**
 
@@ -57,6 +57,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 12 min | 2 tasks | 6 files |
+| Phase 01 P02 | 10 min | 3 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Approval] 2026-10-27 用户批准 7 阶段路线图与需求映射，Phase 1 可进入规划
 - [Phase 01]: App metadata generator uses line-by-line string templates, never js-yaml serialisation (a serialiser silently drops the D-07 commented ports block and cannot guarantee key order)
 - [Phase 01]: app-metadata.json stores semantic values only; schema DSL strings (list(info|debug|warn), str?) are composed at generation time so the DSL text is never duplicated between source and artifact
+- [Phase 01]: V7 (image tag vs version mismatch) is folded into V6 instead of being its own check code, because an untagged image cannot disagree with `version` — a separate code would have nothing to verify
+- [Phase 01]: validator whitelists are Set constants used as a forward diff only; required-key presence stays with V2 so no failure is reported twice
+- [Phase 01]: V13 scans exactly the two generated files, never the whole repo, because examples/*.example keep `<owner>`/`<repo>` on purpose (examples/README.md)
+- [Phase 01]: V15 skips node_modules as a local false-positive guard only (commented as NOT a Supervisor rule); Supervisor's own filter is dot-segments + rootfs
 
 ### Pending Todos
 
@@ -92,8 +97,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-27T06:14:22.499Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-10-27T06:17:30.000Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
 
-**Next action:** `/gsd-plan-phase 1`（若需先澄清范围，先 `/gsd-discuss-phase 1`）
+**Next action:** `/gsd-execute-phase 1` 继续执行 `01-03-PLAN.md`（负向测试与验收清单；夹具必须放 `os.tmpdir()`，否则 V15 会对夹具自身报错）
