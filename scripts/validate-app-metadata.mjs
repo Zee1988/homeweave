@@ -202,10 +202,11 @@ if (repository) {
 //      exactly the shape that silently skips the check when the key is absent, which is the
 //      hole this code exists to close;
 //   2. the type loop carries `if (!has(...)) continue` so that ONE missing key produces ONE
-//      failure (from loop 1), not two. It does not weaken presence enforcement, and it keeps
-//      the total check count from depending on which key happens to be missing.
+//      failure (from loop 1), not two. It does not weaken presence enforcement, but it does make
+//      the total check count depend on how many keys are absent: 87 checks with all three keys
+//      present, 85 with one missing, 83 with two. Only the all-present number is asserted.
 //
-// V3 stays untouched below this block, so a missing or non-string "name" reports BOTH V3 and
+// V3 stays untouched above this block, so a missing or non-string "name" reports BOTH V3 and
 // V19. That double report is accepted deliberately: this validator collects failures and only
 // forbids under-reporting, and deleting V3 to silence the overlap would reduce the check count.
 if (repository) {

@@ -300,6 +300,23 @@ const REPOSITORY_SOURCE_FAILURES = [
     },
     /repository\.url is missing/,
   ],
+  // The two cases below exist to pin assertNonEmptyString on name/url, not just maintainer.
+  // Deleting either call site must turn this table red, so each entry asserts the value-level
+  // message ("must be a non-empty string"), never the presence-level one ("is missing").
+  [
+    'empty name',
+    (source) => {
+      source.repository.name = '';
+    },
+    /repository\.name must be a non-empty string/,
+  ],
+  [
+    'empty url',
+    (source) => {
+      source.repository.url = '';
+    },
+    /repository\.url must be a non-empty string/,
+  ],
 ];
 
 for (const [label, mutate, expected] of REPOSITORY_SOURCE_FAILURES) {
