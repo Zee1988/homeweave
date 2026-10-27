@@ -294,6 +294,45 @@ test('V16: a list description is rejected', (t) => {
   assert.match(result.stdout, /"description"/, `description not named in the failure\n${result.stdout}`);
 });
 
+// Two branches the four cases above do not reach, both added because "the code exists" is not
+// the same as "the failing branch is proven to fire":
+//
+//   - an empty string, which is a string and therefore passes any typeof check;
+//   - a value that really is a string but is not x.y.z. The 2026.1 case above cannot cover this
+//     one: unquoted 2026.1 is parsed as a FLOAT, so it exercises the not-a-string branch. Getting
+//     a string requires a value the fixture serializer has to quote -- a space is enough.
+test('V16: an empty name is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.name = '';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'name is empty');
+  assert.match(result.stdout, /"name"/, `name not named in the failure\n${result.stdout}`);
+});
+
+test('V16: a homeassistant string that is not x.y.z is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.homeassistant = '2026.10 beta';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'homeassistant="2026.10 beta"');
+  // Matched on the V16 wording specifically. Changing homeassistant also breaks the V17 contract
+  // literal, so asserting only the code would let this case pass on V17's back.
+  assert.match(
+    result.stdout,
+    /✗ V16 .*"homeassistant" must look like <major>\.<minor>\.<patch>/,
+    `the format branch of V16 did not fire\n${result.stdout}`,
+  );
+});
+
 // The positive control that makes V16 trustworthy: it must not depend on quote style. The
 // fixture serializer never quotes "2026.10.0" (it is a plain scalar), so this quoted form can
 // only be produced by rewriting the source text -- an object-level mutation cannot express it.
