@@ -1,6 +1,0 @@
-{
-  "updated": true,
-  "phase": "01",
-  "waves": 3,
-  "cross_cutting_constraints": 0
-}
