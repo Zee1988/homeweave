@@ -29,6 +29,36 @@ const REPOSITORY_PATH = join(ROOT, 'repository.yaml');
 
 const CONFIG_REQUIRED_KEYS = ['name', 'slug', 'version', 'description', 'arch'];
 
+// Every key Supervisor accepts in an app config.yaml, per the official configuration
+// reference. This whitelist is the highest-value check in the phase: the Supervisor
+// schema is built with extra=vol.REMOVE_EXTRA, so a misspelled key ("ingresss") is
+// silently discarded instead of rejected -- the app then behaves as if the key were
+// never written, with no error and no warning anywhere.
+const CONFIG_ALLOWED_KEYS = new Set([
+  'name',
+  'slug',
+  'version',
+  'description',
+  'url',
+  'arch',
+  'init',
+  'image',
+  'homeassistant',
+  'homeassistant_api',
+  'ingress',
+  'ingress_port',
+  'options',
+  'schema',
+]);
+
+const REPOSITORY_ALLOWED_KEYS = new Set(['name', 'url', 'maintainer']);
+
+// Supervisor's ARCH_ALL is broader; we ship a strictly narrower subset on purpose so a
+// multi-arch build is never declared before it actually exists.
+const SUPPORTED_ARCH = ['amd64', 'aarch64'];
+
+const LOG_LEVELS = ['info', 'debug', 'warn'];
+
 const failures = [];
 let checksRun = 0;
 
@@ -36,13 +66,23 @@ function fail(code, file, message) {
   failures.push({ code, file, message });
 }
 
-function pass() {
+function check(ok, code, file, message) {
   checksRun += 1;
+  if (!ok) fail(code, file, message);
+  return ok;
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function has(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 function describe(value) {
   if (value === null) return 'null';
-  if (Array.isArray(value)) return 'an array';
+  if (Array.isArray(value)) return 'a list';
   return typeof value;
 }
 
@@ -64,12 +104,12 @@ function readAndParse(path, label) {
     return null;
   }
 
-  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+  if (!isPlainObject(data)) {
     fail('V1', label, `top level must be a mapping, got ${describe(data)}`);
     return null;
   }
 
-  pass();
+  checksRun += 1;
   return data;
 }
 
@@ -79,22 +119,216 @@ const repository = readAndParse(REPOSITORY_PATH, REPOSITORY_FILE);
 // V2: the five required keys must be present in the app configuration.
 if (config) {
   for (const key of CONFIG_REQUIRED_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(config, key)) {
-      pass();
-    } else {
-      fail('V2', CONFIG_FILE, `missing required key "${key}"`);
-    }
+    check(has(config, key), 'V2', CONFIG_FILE, `missing required key "${key}"`);
   }
 }
 
 // V3: the repository manifest must carry a usable name.
 if (repository) {
   const name = repository.name;
-  if (typeof name === 'string' && name.trim() !== '') {
-    pass();
+  check(
+    typeof name === 'string' && name.trim() !== '',
+    'V3',
+    REPOSITORY_FILE,
+    `"name" must be a non-empty string, got ${describe(name)}`,
+  );
+}
+
+// V4: "version" has to survive YAML parsing as a string in x.y.z shape. An unquoted 1.10
+// is read as the number 1.1 and loses its minor component; a bare 1.0 becomes 1. Both are
+// silent breakage at build time, which is why this asserts the parsed type, not the quotes.
+if (config && has(config, 'version')) {
+  const version = config.version;
+  if (typeof version !== 'string') {
+    fail('V4', CONFIG_FILE, `"version" must be a string, got ${describe(version)}`);
+    checksRun += 1;
   } else {
-    fail('V3', REPOSITORY_FILE, `"name" must be a non-empty string, got ${describe(name)}`);
+    check(
+      /^\d+\.\d+\.\d+$/.test(version),
+      'V4',
+      CONFIG_FILE,
+      `"version" must look like <major>.<minor>.<patch>, got "${version}"`,
+    );
   }
+}
+
+// V5: arch must be a non-empty list drawn from the supported subset, without repeats.
+if (config && has(config, 'arch')) {
+  const arch = config.arch;
+  const isList = Array.isArray(arch) && arch.length > 0;
+  check(isList, 'V5', CONFIG_FILE, `"arch" must be a non-empty list, got ${describe(arch)}`);
+  if (isList) {
+    const unsupported = arch.filter((entry) => !SUPPORTED_ARCH.includes(entry));
+    check(
+      unsupported.length === 0,
+      'V5',
+      CONFIG_FILE,
+      `"arch" contains unsupported values: ${unsupported.map(String).join(', ')} (allowed: ${SUPPORTED_ARCH.join(', ')})`,
+    );
+    const duplicates = [...new Set(arch.filter((entry, index) => arch.indexOf(entry) !== index))];
+    check(
+      duplicates.length === 0,
+      'V5',
+      CONFIG_FILE,
+      `"arch" contains duplicate entries: ${duplicates.join(', ')}`,
+    );
+  }
+}
+
+// V6: image must be a bare ghcr.io/ reference without a tag. Tag detection looks only at
+// the last path segment so a registry port (ghcr.io:443/owner/name) is never mistaken for
+// a tag. V7 (tag versus version mismatch) is folded in here on purpose: with no tag there
+// is nothing to disagree with "version", so a separate code would have nothing to check.
+if (config && has(config, 'image')) {
+  const image = config.image;
+  const isUsableString = typeof image === 'string' && image.trim() !== '';
+  check(isUsableString, 'V6', CONFIG_FILE, `"image" must be a non-empty string, got ${describe(image)}`);
+  if (isUsableString) {
+    check(
+      !image.includes('{arch}'),
+      'V6',
+      CONFIG_FILE,
+      `"image" must not contain the {arch} placeholder, got "${image}"`,
+    );
+    check(
+      image.startsWith('ghcr.io/'),
+      'V6',
+      CONFIG_FILE,
+      `"image" must be prefixed with ghcr.io/, got "${image}"`,
+    );
+    const lastSegment = image.split('/').pop();
+    check(
+      !lastSegment.includes(':'),
+      'V6',
+      CONFIG_FILE,
+      `"image" must not carry a tag (the tag is derived from "version" at build time), got "${image}"`,
+    );
+  }
+}
+
+// V8: key whitelists. Anything not listed here is silently dropped by Supervisor.
+if (config) {
+  for (const key of Object.keys(config)) {
+    check(
+      CONFIG_ALLOWED_KEYS.has(key),
+      'V8',
+      CONFIG_FILE,
+      `unknown key "${key}" -- Supervisor builds its schema with extra=vol.REMOVE_EXTRA, so unknown keys are silently dropped instead of rejected`,
+    );
+  }
+}
+
+if (repository) {
+  for (const key of Object.keys(repository)) {
+    check(
+      REPOSITORY_ALLOWED_KEYS.has(key),
+      'V8',
+      REPOSITORY_FILE,
+      `unknown key "${key}" -- unrecognised repository.yaml keys are ignored, so a typo would go unnoticed`,
+    );
+  }
+}
+
+// V9: boolean flags must be real booleans. The string "true" is truthy in YAML but not a
+// boolean, and Supervisor validates the type before it ever looks at the value.
+if (config) {
+  for (const key of ['init', 'ingress', 'homeassistant_api']) {
+    if (has(config, key)) {
+      check(
+        typeof config[key] === 'boolean',
+        'V9',
+        CONFIG_FILE,
+        `"${key}" must be a boolean (unquoted true/false), got ${describe(config[key])}`,
+      );
+    }
+  }
+}
+
+// V10: ingress_port must be an integer in 0..65535. Zero is the documented way to ask
+// Supervisor to pick a free port between 62000 and 65500 on our behalf.
+if (config && has(config, 'ingress_port')) {
+  const port = config.ingress_port;
+  check(
+    Number.isInteger(port) && port >= 0 && port <= 65535,
+    'V10',
+    CONFIG_FILE,
+    `"ingress_port" must be an integer in 0..65535 (0 asks Supervisor to allocate one from 62000-65500), got ${describe(port)} "${port}"`,
+  );
+}
+
+const options = config && isPlainObject(config.options) ? config.options : {};
+const schema = config && isPlainObject(config.schema) ? config.schema : {};
+
+if (config) {
+  if (has(config, 'options')) {
+    check(
+      isPlainObject(config.options),
+      'V11',
+      CONFIG_FILE,
+      `"options" must be a mapping of default values, got ${describe(config.options)}`,
+    );
+  }
+  if (has(config, 'schema')) {
+    check(
+      isPlainObject(config.schema),
+      'V11',
+      CONFIG_FILE,
+      `"schema" must be a mapping of option types, got ${describe(config.schema)}`,
+    );
+  }
+}
+
+// V11: schema and options are two halves of one contract -- every schema key needs a
+// default in options or a trailing "?" (optional), and every option needs a declared type.
+for (const key of Object.keys(schema)) {
+  const declaredInOptions = has(options, key);
+  const optional = typeof schema[key] === 'string' && schema[key].endsWith('?');
+  check(
+    declaredInOptions || optional,
+    'V11',
+    CONFIG_FILE,
+    `schema key "${key}" has no default value in options and is not optional (no trailing "?")`,
+  );
+}
+
+for (const key of Object.keys(options)) {
+  check(
+    has(schema, key),
+    'V11',
+    CONFIG_FILE,
+    `options key "${key}" is not declared in schema, so Supervisor cannot type-check or render it`,
+  );
+}
+
+// V12: the two options shipped in Phase 1, checked as exact DSL strings (mini-DSL subset
+// only: str, bool, list(...), int(min,max), password, device -- not full JSON Schema).
+if (config) {
+  check(
+    schema.log_level === 'list(info|debug|warn)',
+    'V12',
+    CONFIG_FILE,
+    `schema.log_level must be exactly "list(info|debug|warn)", got "${schema.log_level}"`,
+  );
+  check(
+    schema.ha_url === 'str?',
+    'V12',
+    CONFIG_FILE,
+    `schema.ha_url must be exactly "str?" (a string with no default required), got "${schema.ha_url}"`,
+  );
+  check(
+    LOG_LEVELS.includes(options.log_level),
+    'V12',
+    CONFIG_FILE,
+    `options.log_level must be one of ${LOG_LEVELS.join('|')}, got "${options.log_level}"`,
+  );
+  // An empty ha_url is valid and is the safe default: it tells HomeWeave to fall back to
+  // Supervisor's own Home Assistant discovery instead of a user-supplied URL.
+  check(
+    typeof options.ha_url === 'string',
+    'V12',
+    CONFIG_FILE,
+    `options.ha_url must be a string (empty string means Home Assistant auto-discovery), got ${describe(options.ha_url)}`,
+  );
 }
 
 for (const failure of failures) {
