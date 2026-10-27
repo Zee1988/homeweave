@@ -68,7 +68,24 @@ function describeLine(value) {
 }
 
 /**
- * Describe where the on-disk bytes first diverge from the freshly built ones.
+ * Fold the line endings a checkout may have imposed back to the only form this generator
+ * ever writes.
+ *
+ * This is not laxity, it is the environment: this repository has `core.autocrlf=true` and no
+ * `.gitattributes`, so a fresh Windows clone checks the artifacts out as CRLF while the
+ * generator always writes LF. Without this fold, `--check` reports "Out of date" on every
+ * clean clone and on nothing that is actually stale -- a guard that is red before anyone has
+ * done anything wrong, which is the same as no guard (people disable it). Verified by cloning
+ * the repository into a temp directory and running `--check` there.
+ *
+ * Only EOL is folded. Any other difference still trips the guard, including a lone CR.
+ */
+function normaliseLineEndings(text) {
+  return text.replace(/\r\n/g, LINE_END);
+}
+
+/**
+ * Describe where the on-disk content first diverges from the freshly built content.
  * Only the first differing line is reported -- enough to locate the drift, not so much
  * that the message becomes an unreadable diff.
  */
@@ -255,8 +272,10 @@ function writeLines(path, lines) {
       // never ran the generator is in, and Supervisor would find no app at all.
       current = null;
     }
-    if (current !== next) {
-      outOfDate.push(`Out of date: ${relativeToRepo(path)} (run \`corepack pnpm generate:app\`) - ${describeDrift(next, current)}`);
+    // Compare content, not checkout policy: see normaliseLineEndings().
+    const currentNormalised = current === null ? null : normaliseLineEndings(current);
+    if (currentNormalised !== next) {
+      outOfDate.push(`Out of date: ${relativeToRepo(path)} (run \`corepack pnpm generate:app\`) - ${describeDrift(next, currentNormalised)}`);
     }
     return;
   }

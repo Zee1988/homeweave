@@ -306,6 +306,47 @@ for (const description of TRICKY_DESCRIPTIONS) {
 }
 
 // ---------------------------------------------------------------------------------------
+// Checkout line endings must not count as drift. This repository has core.autocrlf=true and
+// no .gitattributes, so a fresh Windows clone produces CRLF artifacts while the generator
+// always writes LF. A guard that goes red on a clean clone is worse than no guard: it trains
+// people to bypass it. Verified against a real clone, not just this fixture.
+// ---------------------------------------------------------------------------------------
+test('--check tolerates CRLF artifacts produced by a Windows checkout', (t) => {
+  const root = makeTempTree(t);
+  for (const relativePath of [REPOSITORY_YAML_REL, CONFIG_YAML_REL]) {
+    const path = join(root, relativePath);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+  }
+
+  const result = runGenerator(root, ['--check']);
+
+  assert.notEqual(result.status, null, `generator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 0, `a CRLF checkout was reported as drift: ${result.status}\n${outputOf(result)}`);
+  assert.doesNotMatch(outputOf(result), /Out of date/, outputOf(result));
+});
+
+test('--check still catches a real edit inside a CRLF artifact', (t) => {
+  const root = makeTempTree(t);
+  for (const relativePath of [REPOSITORY_YAML_REL, CONFIG_YAML_REL]) {
+    const path = join(root, relativePath);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+  }
+
+  const configPath = join(root, CONFIG_YAML_REL);
+  const crlf = readFileSync(configPath, 'utf8');
+  const edited = crlf.replace('# ports:\r\n', '');
+  assert.notEqual(edited, crlf, 'fixture edit did not apply: the "# ports:" line was not found');
+  writeFileSync(configPath, edited, 'utf8');
+
+  const result = runGenerator(root, ['--check']);
+
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${outputOf(result)}`);
+  const output = outputOf(result);
+  assert.match(output, /Out of date/, output);
+  assert.match(output, /homeweave_app\/config\.yaml/, output);
+});
+
+// ---------------------------------------------------------------------------------------
 // Smoke: a full generate in a temp tree leaves no residual drift. This is the pair that
 // proves the guard is a guard and not an "always red" check -- generate, then --check, both
 // on the very same bytes.
