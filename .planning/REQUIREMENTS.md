@@ -116,50 +116,62 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| APP-01 | TBD | Pending |
-| APP-02 | TBD | Pending |
-| APP-03 | TBD | Pending |
-| APP-04 | TBD | Pending |
-| IMG-01 | TBD | Pending |
-| IMG-02 | TBD | Pending |
-| IMG-03 | TBD | Pending |
-| IMG-04 | TBD | Pending |
-| IMG-05 | TBD | Pending |
-| RT-01 | TBD | Pending |
-| RT-02 | TBD | Pending |
-| RT-03 | TBD | Pending |
-| RT-04 | TBD | Pending |
-| RT-05 | TBD | Pending |
-| DATA-01 | TBD | Pending |
-| DATA-02 | TBD | Pending |
-| DATA-03 | TBD | Pending |
-| DATA-04 | TBD | Pending |
-| HA-01 | TBD | Pending |
-| HA-02 | TBD | Pending |
-| HA-03 | TBD | Pending |
-| HA-04 | TBD | Pending |
-| ING-01 | TBD | Pending |
-| ING-02 | TBD | Pending |
-| ING-03 | TBD | Pending |
-| ING-04 | TBD | Pending |
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| DOC-01 | TBD | Pending |
-| DOC-02 | TBD | Pending |
-| DOC-03 | TBD | Pending |
-| DOC-04 | TBD | Pending |
-| DOC-05 | TBD | Pending |
-| DOC-06 | TBD | Pending |
-| VER-01 | TBD | Pending |
-| VER-02 | TBD | Pending |
-| VER-03 | TBD | Pending |
+| APP-01 | Phase 1 | Pending |
+| APP-02 | Phase 1 | Pending |
+| APP-03 | Phase 1 | Pending |
+| APP-04 | Phase 1 | Pending |
+| IMG-01 | Phase 2 | Pending |
+| IMG-02 | Phase 2 | Pending |
+| IMG-03 | Phase 2 | Pending |
+| IMG-04 | Phase 2 | Pending |
+| IMG-05 | Phase 2 | Pending |
+| RT-01 | Phase 3 | Pending |
+| RT-02 | Phase 3 | Pending |
+| RT-03 | Phase 3 | Pending |
+| RT-04 | Phase 3 | Pending |
+| RT-05 | Phase 3 | Pending |
+| DATA-01 | Phase 4 | Pending |
+| DATA-02 | Phase 4 | Pending |
+| DATA-03 | Phase 4 | Pending |
+| DATA-04 | Phase 4 | Pending |
+| HA-01 | Phase 6 | Pending |
+| HA-02 | Phase 6 | Pending |
+| HA-03 | Phase 6 | Pending |
+| HA-04 | Phase 6 | Pending |
+| ING-01 | Phase 5 | Pending |
+| ING-02 | Phase 5 | Pending |
+| ING-03 | Phase 5 | Pending |
+| ING-04 | Phase 5 | Pending |
+| SEC-01 | Phase 5 | Pending |
+| SEC-02 | Phase 5 | Pending |
+| SEC-03 | Phase 2 | Pending |
+| DOC-01 | Phase 7 | Pending |
+| DOC-02 | Phase 7 | Pending |
+| DOC-03 | Phase 7 | Pending |
+| DOC-04 | Phase 7 | Pending |
+| DOC-05 | Phase 7 | Pending |
+| DOC-06 | Phase 7 | Pending |
+| VER-01 | Phase 2 | Pending |
+| VER-02 | Phase 7 | Pending |
+| VER-03 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 37 total
-- Mapped to phases: 0
-- Unmapped: 37 ⚠️（roadmap 创建时填写）
+- v1 requirements: 38 total（文档原记 37，逐条清点为 38：APP 4 + IMG 5 + RT 5 + DATA 4 + HA 4 + ING 4 + SEC 3 + DOC 6 + VER 3）
+- Mapped to phases: 38
+- Unmapped: 0 ✓
+
+**Phase mapping summary:**
+
+| Phase | Requirements | Count |
+|-------|--------------|-------|
+| Phase 1 | APP-01..04 | 4 |
+| Phase 2 | IMG-01..05, SEC-03, VER-01 | 7 |
+| Phase 3 | RT-01..05 | 5 |
+| Phase 4 | DATA-01..04 | 4 |
+| Phase 5 | ING-01..04, SEC-01, SEC-02 | 6 |
+| Phase 6 | HA-01..04 | 4 |
+| Phase 7 | DOC-01..06, VER-02, VER-03 | 8 |
 
 ---
 *Requirements defined: 2026-10-27*
-*Last updated: 2026-10-27 after initial definition*
+*Last updated: 2026-10-27 after roadmap creation（traceability 填满，计数修正为 38）*
