@@ -3,7 +3,7 @@ name: HomeWeave
 slug: homeweave
 version: "0.1.0"
 description: AI Home Operating System for Home Assistant
-url: https://github.com/Zee1988/homeweave/tree/master/homeweave_app
+url: "https://github.com/Zee1988/homeweave/tree/master/homeweave_app"
 arch:
   - amd64
   - aarch64
@@ -17,7 +17,7 @@ options:
   log_level: info
   ha_url: ""
 schema:
-  log_level: list(info|debug|warn)
+  log_level: "list(info|debug|warn)"
   ha_url: "str?"
 
 # ports stays closed until Phase 5 delivers HomeWeave's own authentication and authorization.

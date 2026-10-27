@@ -33,6 +33,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
+import { load as parseYaml } from 'js-yaml';
+
 /** The generator under test (same file `pnpm generate:app` runs). */
 const GENERATOR_PATH = fileURLToPath(new URL('../generate-app-metadata.mjs', import.meta.url));
 
@@ -206,4 +208,115 @@ test('--check still fails on an unreadable source instead of reporting zero drif
   const output = outputOf(result);
   assert.match(output, /^Failed: /m, output);
   assert.doesNotMatch(output, /checks passed/, output);
+});
+
+// ---------------------------------------------------------------------------------------
+// T-01-19, fail-closed on the source: an unconsumed key. `app.watchdog = true` used to be
+// silently dropped (exit 0, no watchdog in the artifact), which quietly breaks the promise
+// that "the generator ran clean" means "the source was applied". It must now stop the run,
+// and above all it must stop it BEFORE anything is rewritten.
+// ---------------------------------------------------------------------------------------
+test('an unconsumed source key fails the generator without rewriting either artifact', (t) => {
+  const root = makeTempTree(t, (source) => {
+    source.app.watchdog = true;
+  });
+
+  // Sentinel contents: if the generator writes at all, these change. This is how "no artifact
+  // was rewritten" becomes an assertion instead of a hope.
+  const sentinel = 'SENTINEL: written by the test, must survive a failed generation\n';
+  writeFileSync(join(root, REPOSITORY_YAML_REL), sentinel, 'utf8');
+  writeFileSync(join(root, CONFIG_YAML_REL), sentinel, 'utf8');
+
+  const result = runGenerator(root);
+
+  assert.notEqual(result.status, null, `generator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${outputOf(result)}`);
+
+  const output = outputOf(result);
+  // A formatted `Failed:` line, not a stack trace.
+  assert.match(output, /^Failed: /m, output);
+  // The message must name the offending source key, or the author cannot act on it.
+  assert.match(output, /app\.watchdog is not consumed/, output);
+  assert.doesNotMatch(output, /TypeError/, output);
+
+  assert.equal(readFileSync(join(root, REPOSITORY_YAML_REL), 'utf8'), sentinel, 'repository.yaml was rewritten by a failed run');
+  assert.equal(readFileSync(join(root, CONFIG_YAML_REL), 'utf8'), sentinel, 'config.yaml was rewritten by a failed run');
+});
+
+// ---------------------------------------------------------------------------------------
+// T-01-19, renamed nested key: this used to flood stderr with
+// `TypeError: Cannot read properties of undefined (reading 'type')` plus stack frames that
+// point at internal functions. It must become a readable `Failed:` message naming the key
+// path, with no stack at all.
+// ---------------------------------------------------------------------------------------
+test('a renamed optionDefs entry fails with a formatted message, not a stack trace', (t) => {
+  const root = makeTempTree(t, (source) => {
+    source.app.optionDefs.haURL = source.app.optionDefs.haUrl;
+    delete source.app.optionDefs.haUrl;
+  });
+
+  const result = runGenerator(root);
+
+  assert.notEqual(result.status, null, `generator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${outputOf(result)}`);
+
+  const output = outputOf(result);
+  assert.match(output, /^Failed: /m, output);
+  assert.match(output, /optionDefs/, output);
+  // The whole point: no raw TypeError, no stack frames naming generator internals.
+  assert.doesNotMatch(output, /TypeError/, output);
+  assert.doesNotMatch(output, /at buildSchemaDsl/, output);
+  assert.doesNotMatch(output, /\n\s+at /, output);
+});
+
+// ---------------------------------------------------------------------------------------
+// T-01-20: scalar round-trip. Seven values that a plain-scalar denylist got wrong -- the `&`
+// case actually shipped (parsed back as "AI OS"), the flow/comment cases produced
+// unparseable YAML, and the two whitespace cases are the ones that make the trim() guard
+// load-bearing: without it they would parse back with the whitespace stripped.
+//
+// These assert the PARSED VALUE, never the quoting. Quote style is not part of the contract.
+// ---------------------------------------------------------------------------------------
+const TRICKY_DESCRIPTIONS = [
+  '&anchor AI OS',
+  'HomeWeave:',
+  '[alpha] AI OS',
+  '* HomeWeave notes',
+  '@HomeWeave',
+  ' AI OS',
+  'AI OS ',
+];
+
+for (const description of TRICKY_DESCRIPTIONS) {
+  test(`description ${JSON.stringify(description)} survives a generate/parse round trip verbatim`, (t) => {
+    const root = makeTempTree(t, (source) => {
+      source.app.description = description;
+    });
+
+    const generated = runGenerator(root);
+    assert.equal(generated.status, 0, `expected exit 0, got ${generated.status}\n${outputOf(generated)}`);
+
+    const parsed = parseYaml(readFileSync(join(root, CONFIG_YAML_REL), 'utf8'));
+    assert.equal(
+      parsed.description,
+      description,
+      `description was silently changed: source ${JSON.stringify(description)} -> artifact ${JSON.stringify(parsed.description)}`,
+    );
+  });
+}
+
+// ---------------------------------------------------------------------------------------
+// Smoke: a full generate in a temp tree leaves no residual drift. This is the pair that
+// proves the guard is a guard and not an "always red" check -- generate, then --check, both
+// on the very same bytes.
+// ---------------------------------------------------------------------------------------
+test('generate then --check leaves zero residual drift', (t) => {
+  const root = makeTempTree(t);
+
+  const generated = runGenerator(root);
+  assert.equal(generated.status, 0, `generate failed: ${generated.status}\n${outputOf(generated)}`);
+
+  const checked = runGenerator(root, ['--check']);
+  assert.equal(checked.status, 0, `--check after generate reported drift: ${checked.status}\n${outputOf(checked)}`);
+  assert.doesNotMatch(outputOf(checked), /Out of date/, outputOf(checked));
 });

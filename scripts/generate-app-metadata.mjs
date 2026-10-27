@@ -92,30 +92,72 @@ function readSource() {
   }
 }
 
-// Emit a plain YAML scalar when it is unambiguous, otherwise a double-quoted one.
-// Quote style is never load-bearing: parsers must assert parsed values only.
+// Plain-scalar allowlist: anything outside it is emitted double-quoted.
+//
+// This used to be a denylist ("quote if the value looks risky"), which fails silently: YAML
+// has a whole set of indicators that are only special as the FIRST character of a plain
+// scalar -- & (anchor), * (alias), @ (reserved), [ ] { } (flow), : (mapping), # (comment),
+// % (directive). Each indicator the denylist forgets silently changes the value:
+// `&anchor AI OS` was emitted bare and parsed back as `AI OS`, with exit 0 and valid YAML.
+//
+// An allowlist inverts the failure direction: an unrecognised character only earns the value
+// a pair of quotes, which is harmless because quote style is never load-bearing. Parsers
+// assert parsed values, never quote style.
+//
+// The `value.trim() === value` clause is NOT made redundant by the space in the character
+// class. YAML strips trailing whitespace from a plain scalar while parsing, so emitting
+// `AI OS ` bare would read back as `AI OS` -- exit 0, valid YAML, value changed. That is the
+// same failure class as the anchor bug, so leading/trailing whitespace must force quoting.
+const PLAIN_SCALAR = /^[A-Za-z][A-Za-z0-9 _./@()+-]*$/;
+
 function scalar(value) {
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   if (typeof value === 'number') return String(value);
   if (typeof value !== 'string') {
     throw new Error(`unsupported scalar type: ${typeof value}`);
   }
-  const needsQuotes =
-    value === '' ||
-    /^[0-9]/.test(value) ||
-    /^(true|false|null|yes|no|on|off|~)$/i.test(value) ||
-    /(^|\s)#/.test(value) ||
-    value.includes(': ') ||
-    value.includes('?') ||
-    value.trim() !== value;
-  return needsQuotes ? JSON.stringify(value) : value;
+  if (value.trim() === value && PLAIN_SCALAR.test(value)) return value;
+  return JSON.stringify(value);
 }
 
 function listBlock(key, values) {
   return [`${key}:`, ...values.map((item) => `  - ${scalar(item)}`)];
 }
 
+// ---------------------------------------------------------------------------------------
+// Input assertions. Every one of these throws (main turns the throw into `Failed: <path>: …`)
+// because the only two alternatives are worse: read a key that is not there and emit
+// `undefined` into an artifact, or throw a raw TypeError with a stack trace that names an
+// internal function instead of the source key the author actually mistyped.
+// ---------------------------------------------------------------------------------------
+
+/** Assert a source section is a plain object, so Object.keys / property reads are safe. */
+function assertObject(keyPath, value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`${keyPath} must be an object; got ${Array.isArray(value) ? 'array' : String(value === null ? 'null' : typeof value)}`);
+  }
+}
+
+/**
+ * Assert `value` is a non-empty array of strings.
+ *
+ * This is not defensive noise: iterating a string with `for...of` yields its characters, so a
+ * `commentedPortsBlock` accidentally written as a single string would emit a comment block
+ * made of one-character lines -- exit 0, valid YAML, content destroyed.
+ */
+function assertStringList(keyPath, value) {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${keyPath} must be a non-empty array of strings`);
+  }
+  for (const item of value) {
+    if (typeof item !== 'string' || item === '') {
+      throw new Error(`${keyPath} entries must be non-empty strings; got ${JSON.stringify(item)}`);
+    }
+  }
+}
+
 function buildRepositoryYaml(repository) {
+  assertObject('repository', repository);
   // Key order is part of the contract: name -> url -> maintainer.
   return [`name: ${scalar(repository.name)}`, `url: ${scalar(repository.url)}`, `maintainer: ${scalar(repository.maintainer)}`];
 }
@@ -123,13 +165,21 @@ function buildRepositoryYaml(repository) {
 // schema DSL strings are derived from the semantic option definitions so the DSL
 // text exists only in the generated artifact, never duplicated in the source.
 function buildSchemaDsl(optionDefs) {
-  const { logLevel, haUrl } = optionDefs;
+  // Reading the keys off a possibly-undefined object is what used to produce
+  // `TypeError: Cannot read properties of undefined (reading 'type')`. Guards first.
+  assertObject('app.optionDefs', optionDefs);
 
+  const logLevel = optionDefs.logLevel;
+  assertObject('app.optionDefs.logLevel', logLevel);
   if (logLevel.type !== 'enum') {
-    throw new Error(`optionDefs.logLevel.type must be "enum", got "${logLevel.type}"`);
+    throw new Error(`app.optionDefs.logLevel.type must be "enum", got ${JSON.stringify(logLevel.type)}`);
   }
+  assertStringList('app.optionDefs.logLevel.values', logLevel.values);
+
+  const haUrl = optionDefs.haUrl;
+  assertObject('app.optionDefs.haUrl', haUrl);
   if (haUrl.type !== 'string') {
-    throw new Error(`optionDefs.haUrl.type must be "string", got "${haUrl.type}"`);
+    throw new Error(`app.optionDefs.haUrl.type must be "string", got ${JSON.stringify(haUrl.type)}`);
   }
 
   // Enum -> list(a|b|c); optional string -> str? (quoted as a whole, see scalar()).
@@ -140,6 +190,14 @@ function buildSchemaDsl(optionDefs) {
 }
 
 function buildConfigYaml(app) {
+  assertObject('app', app);
+  // listBlock() maps over whatever it is given, so a non-array arch would either throw a raw
+  // TypeError or (worse, for a string) silently become a per-character list.
+  assertStringList('app.arch', app.arch);
+  assertObject('app.options', app.options);
+  assertStringList('app.commentedPortsComment', app.commentedPortsComment);
+  assertStringList('app.commentedPortsBlock', app.commentedPortsBlock);
+
   // Key order is part of the contract (01-PATTERNS.md section 4). Any reordering
   // is a defect: it would produce a meaningless diff on every regeneration.
   const lines = [
@@ -211,6 +269,61 @@ function writeLines(path, lines) {
   }
 }
 
+/**
+ * Every `app` key the generator actually consumes.
+ *
+ * This list exists to make the generator fail closed on its own input. Before it, a key the
+ * builder never read -- a typo, a rename, an idea someone added and forgot to wire up -- was
+ * silently dropped: `app.watchdog = true` produced exit 0 and an artifact with no watchdog in
+ * it. That breaks the one invariant the whole single-source-of-truth design rests on, namely
+ * that "the generator ran clean" means "the source was applied". Keep this list in sync with
+ * buildConfigYaml / buildSchemaDsl; the failure message says so.
+ */
+const APP_SOURCE_KEYS = [
+  'name',
+  'slug',
+  'version',
+  'description',
+  'url',
+  'arch',
+  'init',
+  'image',
+  'homeassistant',
+  'homeassistant_api',
+  'ingress',
+  'ingress_port',
+  'options',
+  'optionDefs',
+  'commentedPortsComment',
+  'commentedPortsBlock',
+];
+
+/** Every `repository` key the generator consumes (same rationale as APP_SOURCE_KEYS). */
+const REPOSITORY_SOURCE_KEYS = ['name', 'url', 'maintainer'];
+
+/**
+ * Assert a source section holds exactly the keys the generator consumes.
+ *
+ * Both directions matter. An unknown key means the author believes something is being
+ * published that is not. A missing key means the builder would read `undefined` and write it
+ * into an artifact -- or crash later with a TypeError that points at internals, not at the
+ * source. Either way the run must stop before anything is written.
+ */
+function assertConsumedKeys(section, value, consumed) {
+  assertObject(section, value);
+
+  for (const key of Object.keys(value)) {
+    if (!consumed.includes(key)) {
+      fail(SOURCE_PATH, new Error(`${section}.${key} is not consumed by the generator (add it to buildConfigYaml or delete it)`));
+    }
+  }
+  for (const key of consumed) {
+    if (!Object.hasOwn(value, key)) {
+      fail(SOURCE_PATH, new Error(`${section}.${key} is missing (the generator reads it)`));
+    }
+  }
+}
+
 function main() {
   const metadata = readSource();
 
@@ -220,6 +333,14 @@ function main() {
     fail(SOURCE_PATH, new Error(`top-level keys must be exactly ${expectedKeys.join(', ')}; got ${topLevelKeys.join(', ')}`));
   }
 
+  // Full source validation first, artifact construction second, disk writes last.
+  //
+  // Build-then-write is the minimal mitigation for the non-atomic two-file write: if anything
+  // below throws, neither artifact has been touched yet. (A full two-phase temp-file + rename
+  // commit is deliberately out of scope -- see the plan's deferred items.)
+  assertConsumedKeys('repository', metadata.repository, REPOSITORY_SOURCE_KEYS);
+  assertConsumedKeys('app', metadata.app, APP_SOURCE_KEYS);
+
   const missingImage = typeof metadata.app.image === 'string' && metadata.app.image !== metadata.app.image.toLowerCase();
   if (missingImage) {
     fail(SOURCE_PATH, new Error('app.image must be lowercase (container registries reject uppercase paths)'));
@@ -228,8 +349,19 @@ function main() {
     fail(SOURCE_PATH, new Error('app.image must not carry a tag'));
   }
 
-  writeLines(REPOSITORY_YAML_PATH, buildRepositoryYaml(metadata.repository));
-  writeLines(CONFIG_YAML_PATH, buildConfigYaml(metadata.app));
+  let repositoryLines;
+  let configLines;
+  try {
+    repositoryLines = buildRepositoryYaml(metadata.repository);
+    configLines = buildConfigYaml(metadata.app);
+  } catch (error) {
+    // Fail closed with the generator's normal `Failed: <source>: <msg>` shape, never a raw
+    // stack trace: the message has to name the source key the author mistyped.
+    fail(SOURCE_PATH, error);
+  }
+
+  writeLines(REPOSITORY_YAML_PATH, repositoryLines);
+  writeLines(CONFIG_YAML_PATH, configLines);
 
   // Collect-then-report: every stale artifact is named before the process exits non-zero.
   if (CHECK_ONLY && outOfDate.length > 0) {
