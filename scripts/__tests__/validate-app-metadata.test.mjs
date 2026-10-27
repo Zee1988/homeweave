@@ -77,8 +77,46 @@ for (const key of ['name', 'slug', 'version', 'description', 'arch']) {
 }
 
 // ---------------------------------------------------------------------------------------
-// V5 -- arch must stay inside the declared multi-arch subset.
+// V2 -- the remaining 9 required keys. Same discipline as the block above: one case per key,
+// because deleting all of them at once would still exit 1 while proving nothing about which
+// key triggers the check.
+//
+// Do not merge these into the loop above. The five original keys were the "obvious" ones and
+// were already covered before the required set was widened to the full 14; keeping the two
+// groups separate makes it visible at a glance which keys are newly guarded, and keeps the
+// original cases byte-identical to the version that was reviewed.
 // ---------------------------------------------------------------------------------------
+for (const key of [
+  'url',
+  'init',
+  'image',
+  'homeassistant',
+  'homeassistant_api',
+  'ingress',
+  'ingress_port',
+  'options',
+  'schema',
+]) {
+  test(`V2: missing required key "${key}" is rejected`, (t) => {
+    const root = makeValidTree();
+    t.after(() => cleanup(root));
+    writeConfig(root, (config) => {
+      delete config[key];
+    });
+
+    const result = runValidator(root);
+
+    assertDetects(result, 'V2', `missing ${key}`);
+    // The message has to name the deleted key. Without this, a cascading failure on a
+    // neighbouring key (delete "options", hear about "schema" via V11) would be mistaken for
+    // a detection of the key we actually removed.
+    assert.match(result.stdout, new RegExp(`"${key}"`), `${key} not named in the failure\n${result.stdout}`);
+    // A tree with a required key removed must never report success. Written out explicitly so
+    // a future refactor that turns V2 back into a soft warning cannot pass silently.
+    assert.doesNotMatch(result.stdout, /checks passed/, `missing ${key} still reported success\n${result.stdout}`);
+  });
+}
+
 test('V5: arch containing i386 is rejected', (t) => {
   const root = makeValidTree();
   t.after(() => cleanup(root));

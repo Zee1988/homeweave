@@ -27,8 +27,6 @@ const REPOSITORY_FILE = 'repository.yaml';
 const CONFIG_PATH = join(ROOT, 'homeweave_app', 'config.yaml');
 const REPOSITORY_PATH = join(ROOT, 'repository.yaml');
 
-const CONFIG_REQUIRED_KEYS = ['name', 'slug', 'version', 'description', 'arch'];
-
 // Every key Supervisor accepts in an app config.yaml, per the official configuration
 // reference. This whitelist is the highest-value check in the phase: the Supervisor
 // schema is built with extra=vol.REMOVE_EXTRA, so a misspelled key ("ingresss") is
@@ -50,6 +48,16 @@ const CONFIG_ALLOWED_KEYS = new Set([
   'options',
   'schema',
 ]);
+
+// The REQUIRED key set, derived from the whitelist above so the two cannot drift apart.
+//
+// Phase 1 ships the minimal field set on purpose (D-07 excludes boot / watchdog / map /
+// apparmor), so today "required == allowed" is the accurate statement: every key we are
+// willing to write must also be present. It is derived rather than re-listed because a second
+// hand-maintained array is exactly how a key ends up allowed by V8 yet unguarded by V2 -- a
+// gap between the two sets that no check owns. Adding a key to either set is therefore one
+// deliberate, paired edit.
+const CONFIG_REQUIRED_KEYS = [...CONFIG_ALLOWED_KEYS];
 
 const REPOSITORY_ALLOWED_KEYS = new Set(['name', 'url', 'maintainer']);
 
@@ -125,7 +133,11 @@ function readAndParse(path, label) {
 const config = readAndParse(CONFIG_PATH, CONFIG_FILE);
 const repository = readAndParse(REPOSITORY_PATH, REPOSITORY_FILE);
 
-// V2: the five required keys must be present in the app configuration.
+// V2: every required key must be present in the app configuration. Presence is asserted here
+// and ONLY here: V4/V5/V6/V9/V10/V11 stay wrapped in `if (has(config, key))` on purpose,
+// because they answer "is the value correct", not "is the key there". Do not re-add a presence
+// assertion inside those blocks -- one missing key would then be reported twice, and the total
+// check count would depend on which layer happens to run.
 if (config) {
   for (const key of CONFIG_REQUIRED_KEYS) {
     check(has(config, key), 'V2', CONFIG_FILE, `missing required key "${key}"`);
