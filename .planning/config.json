@@ -22,7 +22,8 @@
     "discuss_mode": "discuss",
     "ui_phase": true,
     "ui_safety_gate": true,
-    "context_coverage_gate": true
+    "context_coverage_gate": true,
+    "_auto_chain_active": false
   },
   "planning": {
     "commit_docs": true,

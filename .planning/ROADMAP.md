@@ -45,7 +45,10 @@
   3. `config.yaml` 中 `image`、`version`、`arch`、`ingress_port`、`homeassistant_api` 与 `/data` 相关字段值全部来自已落盘的显式决策；仓库内不存在未替换的 `<owner>` / `<repo>` / `<maintainer>` 占位符。
   4. App 用户在配置页可见至少「日志级别」与「HA URL 覆盖」两个选项，带 `options` + `schema` 类型与默认值（配置文件层面可校验）。
   5. 「在 HAOS 添加仓库并看到 HomeWeave 条目」被写入实机验证清单，并明确标注为 **HAOS 未验证**。
-**Plans**: 3/3 plans executed
+**Plans**: 6/6 plans executed
+- [x] 01-04-PLAN.md
+- [x] 01-05-PLAN.md
+- [x] 01-06-PLAN.md
 **Wave 1**
 - [x] 01-01-PLAN.md — 仓库结构与两个生成物（`repository.yaml` + `homeweave_app/config.yaml`）
 
@@ -197,7 +200,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. App 元数据与仓库可识别性 | 2/3 | In Progress | - |
+| 1. App 元数据与仓库可识别性 | 6/6 | In Progress | - |
 | 2. 镜像构建与发布链路 | 0/TBD | Not started | - |
 | 3. 运行时骨架 | 0/TBD | Not started | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
