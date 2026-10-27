@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 01
 current_phase_name: App 元数据与仓库可识别性
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-10-27T06:17:30.000Z"
+stopped_at: Completed 01-03-PLAN.md (all Phase 01 plans executed)
+last_updated: "2026-10-27T06:22:03.000Z"
 last_activity: 2026-10-27
-last_activity_desc: Completed 01-02 plan (static metadata validator)
-state_head: cb970a06c03bedd8bf30dd5653da0f71cdaa71ae
+last_activity_desc: Completed 01-03 plan (negative-test evidence layer + docs contracts)
+state_head: a780674e674c95b942d61cb5429778d490637a6f
 progress:
   total_phases: 7
   completed_phases: 0
   total_plans: 3
-  completed_plans: 2
+  completed_plans: 3
 ---
 
 # Project State
@@ -27,18 +27,18 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 
 ## Current Position
 
-Phase: 01 (App 元数据与仓库可识别性) — EXECUTING
+Phase: 01 (App 元数据与仓库可识别性) — PLANS EXECUTED, pending verification
 Plan: 3 of 3
-Status: Ready to execute (01-03 负向测试)
-Last activity: 2026-10-27 — Completed 01-02 plan (static metadata validator)
+Status: All 3 plans executed; 待 /gsd-verify-work 与 Phase 7 实机验证（HAOS 未验证项仍未收口）
+Last activity: 2026-10-27 — Completed 01-03 plan (negative-test evidence layer + docs contracts)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [░░░░░░░░░░] 0%  (3/3 plans executed, phase not yet verified)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 2
-- Average duration: ~11 min
+- Total plans completed: 3
+- Average duration: ~9 min
 - Total execution time: ~0.4 hours
 
 **By Phase:**
@@ -58,6 +58,7 @@ Progress: [░░░░░░░░░░] 0%
 |------|----------|-------|-------|
 | Phase 01 P01 | 12 min | 2 tasks | 6 files |
 | Phase 01 P02 | 10 min | 3 tasks | 2 files |
+| Phase 01 P03 | 4 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -76,6 +77,11 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 01]: validator whitelists are Set constants used as a forward diff only; required-key presence stays with V2 so no failure is reported twice
 - [Phase 01]: V13 scans exactly the two generated files, never the whole repo, because examples/*.example keep `<owner>`/`<repo>` on purpose (examples/README.md)
 - [Phase 01]: V15 skips node_modules as a local false-positive guard only (commented as NOT a Supervisor rule); Supervisor's own filter is dot-segments + rootfs
+- [Phase 01]: `test:app` is `node --test "scripts/**/*.test.mjs"` — a bare directory argument (`node --test scripts/`) is treated as a single test file on Node 22.17/win32 and fails with MODULE_NOT_FOUND
+- [Phase 01]: negative tests inject the tree through spawnSync's `cwd` instead of adding a test-only branch to the validator; the file CI runs stays byte-identical to the file under test
+- [Phase 01]: every negative assertion is the triple exit-1 / non-null status / check-code-in-stdout; a spawn failure must fail the case, never pass as a detection
+- [Phase 01]: V15 and V11 each get a paired positive case (skip-list semantics; optional-key needn't have a default) so an over-strict implementation cannot pass unnoticed
+- [Phase 01]: docs/21 §5 keeps `ports` commented and §11 carries a HAOS entry labelled 未在 HAOS 实机验证 / HAOS 未验证; §7's conditional "if 8124/tcp is exposed" clause is left untouched because it does not contradict the commented state
 
 ### Pending Todos
 
@@ -97,8 +103,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-27T06:17:30.000Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-10-27T06:22:03.000Z
+Stopped at: Completed 01-03-PLAN.md (all Phase 01 plans executed)
 Resume file: None
 
-**Next action:** `/gsd-execute-phase 1` 继续执行 `01-03-PLAN.md`（负向测试与验收清单；夹具必须放 `os.tmpdir()`，否则 V15 会对夹具自身报错）
+**Next action:** `/gsd-verify-work 1` 核对 Phase 1 的静态自证层（`corepack pnpm validate:app` + `corepack pnpm test:app`）；「Supervisor 实际接受度」与「HAOS 添加仓库后看到 HomeWeave 条目」两项仍为 **HAOS 未验证**，只归 Phase 7 实机清单，不得由静态校验代签。
