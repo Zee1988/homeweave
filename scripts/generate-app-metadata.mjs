@@ -4,10 +4,10 @@
 // Output: repository.yaml (repository root) and homeweave_app/config.yaml
 //
 // Implementation note (deliberate design decision, see 01-PATTERNS.md section 2):
-// this script builds the YAML line by line as strings instead of using
-// `js-yaml`'s `dump()`. `dump()` cannot emit comments, so a pure dump would
-// silently delete the intentionally commented-out `ports` block that D-07
-// requires to survive in the generated file. String composition also makes the
+// this script builds the YAML line by line as strings instead of serialising an
+// object through `js-yaml`. That serialiser cannot emit comments, so letting it
+// write the file would silently delete the intentionally commented-out `ports`
+// block that D-07 requires to survive in the generated file. String composition also makes the
 // key order in config.yaml 100% deterministic, which is what keeps regenerating
 // the artifacts a zero-diff operation (D-02).
 //
