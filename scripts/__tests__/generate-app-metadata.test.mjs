@@ -397,7 +397,10 @@ test('--check tolerates CRLF artifacts produced by a Windows checkout', (t) => {
   const root = makeTempTree(t);
   for (const relativePath of [REPOSITORY_YAML_REL, CONFIG_YAML_REL]) {
     const path = join(root, relativePath);
-    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+    // Normalize to LF first: the seed is a copy of the real artifact, whose on-disk
+    // line endings depend on core.autocrlf. Converting an already-CRLF file would
+    // produce \r\r\n, which is a corrupt file, not a Windows checkout.
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'), 'utf8');
   }
 
   const result = runGenerator(root, ['--check']);
@@ -411,7 +414,7 @@ test('--check still catches a real edit inside a CRLF artifact', (t) => {
   const root = makeTempTree(t);
   for (const relativePath of [REPOSITORY_YAML_REL, CONFIG_YAML_REL]) {
     const path = join(root, relativePath);
-    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\r\n/g, '\n').replace(/\n/g, '\r\n'), 'utf8');
   }
 
   const configPath = join(root, CONFIG_YAML_REL);
