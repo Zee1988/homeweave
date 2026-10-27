@@ -336,3 +336,99 @@ _Reviewer: CodeBuddy (gsd-code-reviewer)_
 _Depth: deep_
 
 ## REVIEW COMPLETE
+
+---
+
+# 第三轮评审
+
+## Round 3 — plan 01-06（HI-04 closure）
+
+**结论：** ISSUES FOUND（无 BLOCKER / HIGH；HI-04 本身已真实闭合，遗留 1 条 MEDIUM 属新守卫的**测试覆盖**缺陷，2 条 LOW）
+
+**范围：** `66ec59b~1..HEAD`，4 个源码文件（`+306 / −2`）。只审本轮新增的 V19 守卫、`assertNonEmptyString()` 与配套 11 条用例；01-04 / 01-05 已通过的结论未重审。
+
+**计数复核（纯静态 + 差分核算，不重复实跑）：** `81 + 6 = 87` checks（3 条无条件存在性 + 3 条类型，干净树全跑满）；`53 + 11 = 64` 例（校验器 8 + 生成器 3）。两个实现文件的 diff 为**纯新增**（0 删除），两个测试文件仅有的 2 行删除就是 `b71f7f7` 改写的 CRLF `writeFileSync` 行 —— 因此不存在「合并两条 test 凑数」或「删掉既有 check」的空间。`# pass === # tests` 之外另核：两个测试文件无 `test.skip` / `test.only` / `t.skip` / `describe.`，表驱动循环（`REPOSITORY_SOURCE_FAILURES`，2 项）无条件注册。
+
+| # | severity | 位置 | 问题 | 最小复现 | 建议 |
+|---|---|---|---|---|---|
+| R3-01 | MEDIUM | `scripts/generate-app-metadata.mjs:202-204` + `scripts/__tests__/generate-app-metadata.test.mjs:288-303` | 三个新断言调用点里**只有 `maintainer` 有行为用例**。删掉 `assertNonEmptyString('repository.name', …)` 或 `assertNonEmptyString('repository.url', …)`，`test:app` 仍 64/64 全绿 | 临时副本中删掉 url 那行 → `# tests 64 / # pass 64 / # fail 0`，exit 0；删 name 那行同样全绿；只有删 maintainer 那行才 → `# pass 62 / # fail 2` | 表驱动里补两条：`['empty name', s => { s.repository.name = ''; }, /repository\.name must be a non-empty string/]` 与 `['numeric url', s => { s.repository.url = 42; }, /repository\.url must be a non-empty string/]` |
+| R3-02 | LOW | `scripts/validate-app-metadata.mjs:204-206`、`:208` | V19 注释两处与代码不符：(a)「keeps the total check count from depending on which key happens to be missing」——实际总数 = 3 + 存在键数，删键会让 `checksRun` 变小；(b)「V3 stays untouched **below** this block」——V3 在该块**上方**（178-187 行） | 删 `url` 行 → `85 checks run, 1 failed`；删 `url`+`maintainer` → `83 checks run, 2 failed`；干净树 → `87 checks passed` | (a) 改成「keeps **the failure count** at one per missing key, instead of two」；(b) 把 `below` 改 `above` |
+| R3-03 | LOW | `scripts/validate-app-metadata.mjs:226-231`（V19 类型循环）+ `:455-471`（V14） | `url` 只判「非空字符串」，无任何形状校验：一个拼错的 url 能让 87 条检查全绿。这与 HI-04 是同一失败类别（坏值在静态层全绿、故障只在 Supervisor 侧显形），只是不在本计划声明范围内（config 侧同样缺，属既有对称缺口） | 把 `repository.yaml` 的 `url:` 改成 `url: "not-a-url"` 后跑校验器 → `✓ 87 checks passed`，exit 0 | 至少加 `check(/^https?:\/\/\S+$/.test(value), 'V19', …)`；若判定超出本阶段范围，记入下一轮 backlog 并在 V19 注释里显式写明「url 只判类型不判形状」 |
+
+### 五个必答问题（含实测证据）
+
+1. **V19 是否真的无条件？** 是（在「repository 解析成功」这一前提下，与 V2/V16 完全同构）。`212-219` 的存在性循环体是一个裸 `check(has(...))`，不在任何 `if (has(...))` 内；类型循环 `222-233` 是独立 `for`，不消费前一段的结果，只消费 `repository` 本身。**没有任何输入能让 V19 整段跳过而不产生失败**：`repository` 为 falsy 的唯一来源是 `readAndParse()` 返回 `null`，而该函数三条返回 `null` 的路径（读失败 / YAML 解析失败 / 顶层非 mapping）都在返回前 `fail('V1', …)`。
+2. **是否存在绕过路径？** 无。隔离树实测：空文件 → `✗ V1 repository.yaml: top level must be a mapping, got undefined`（exit 1）；顶层数组 → `… got a list`（exit 1）；顶层标量 → `… got string`（exit 1）。`maintainer: "   "` → `✗ V19 … got string`（exit 1）；`maintainer: 0` → `✗ V19 … got number`（exit 1）；`maintainer: {a: b}` → `✗ V19 … got object`（exit 1）。「空文件让缺失键变成无键可查」不成立，因为 V19 的前提是 V1 已经放过。
+3. **生成器侧顺序是否真的安全？** 是。`buildRepositoryYaml()`（`196-207`）三行 `assertNonEmptyString` 在唯一的 `scalar()` 调用（`206`）之前；`scalar()` 在该函数里没有第二次调用点，`main()` 里也没有 `??` 默认值或插值把源值转成字符串的路径。`assertNonEmptyString` 直接判 `typeof value === 'string' && value.trim() !== ''`，`null` / `undefined` / 数字 / 布尔 / 数组一律抛，不存在「先 stringify 再判空」的窗口。缺键场景更早被 `assertConsumedKeys()`（`367-369`）拦下。
+4. **新增的 11 个用例是否非空断言？** 校验器侧 8 条全部三件套（`assertDetects` 断言 `status !== null` + `exit 1` + `✗ <code> `，再单独断言点名键 / 类型词），无一条只断言 exit code。生成器侧 3 条断言 `^Failed: ` + 点名键 + 无 `TypeError` + 两产物哨兵未变，其中「删键」与「坏值」刻意用不同正则（`is missing` vs `must be a non-empty string`）。**唯一实质缺口是 R3-01**：`name` / `url` 两个调用点没有任何用例，属「用例非空但覆盖不到该行」。CRLF 两条在 `b71f7f7` 中**强度未降**：`\r\n→\n→\r\n` 链在数学上保证 fixture 必为纯 CRLF（文件只要含一个 `\n` 就必产 CRLF），第二例仍用 `assert.notEqual(edited, crlf)` 硬校验 `# ports:` 行确被删除，删不掉即红。
+5. **87 / 64 是否真实增量？** 是，且可逐项对账。实现文件零删除 → 87 = 81 + 6 只能是新增 V19 的 3+3；测试文件仅 2 行 CRLF 改写被替换 → 64 = 53 + 11 = 53 + 8（校验器）+ 3（生成器）。无 skip/only/todo，表驱动循环项数固定。
+
+### R3-01 证据（临时副本变异，工作树未改）
+
+```text
+=== baseline (no mutation)                              -> exit 0  # tests 64 # pass 64 # fail 0
+=== delete assertNonEmptyString(repository.url)         -> exit 0  # tests 64 # pass 64 # fail 0
+=== delete assertNonEmptyString(repository.name)        -> exit 0  # tests 64 # pass 64 # fail 0
+=== delete assertNonEmptyString(repository.maintainer)  -> exit 1  # tests 64 # pass 62 # fail 2
+```
+
+变异方法：把 `scripts/`、`homeweave_app/`、`repository.yaml`、`node_modules/js-yaml` 复制到 `%TEMP%`，正则删除目标行后跑 `node --test "scripts/**/*.test.mjs"`。左侧两行「全绿」说明该守卫**可以被静默删除而无人发现** —— 这与 `generate-app-metadata.test.mjs:283-287` 注释自己立的标准（「断言同一个措辞会让两个守卫中的一个被删掉而表仍绿」）直接冲突。
+
+**Fix：**
+
+```js
+const REPOSITORY_SOURCE_FAILURES = [
+  [
+    'null',
+    (source) => {
+      source.repository.maintainer = null;
+    },
+    /repository\.maintainer must be a non-empty string/,
+  ],
+  [
+    'empty name',
+    (source) => {
+      source.repository.name = '';
+    },
+    /repository\.name must be a non-empty string/,
+  ],
+  [
+    'numeric url',
+    (source) => {
+      source.repository.url = 42;
+    },
+    /repository\.url must be a non-empty string/,
+  ],
+  [
+    'missing url',
+    (source) => {
+      delete source.repository.url;
+    },
+    /repository\.url is missing/,
+  ],
+];
+```
+
+### R3-02 证据
+
+```text
+delete url line          -> exit 1  ✗ V19 … missing required key "url"   | 85 checks run, 1 failed
+delete url + maintainer  -> exit 1  ✗ V19 ×2                              | 83 checks run, 2 failed
+clean tree               -> exit 0                                        | ✓ 87 checks passed
+```
+
+失败路径下 `checksRun` 会被打印（`validate-app-metadata.mjs:644`），所以「检查总数与缺失哪个键无关」是一句可被直接证伪的话。修法只需改注释；这一条之所以值得记，是因为本项目把注释当可审计规格用，后续维护者会据此判断 `continue` 的语义。
+
+### R3-03 证据
+
+```text
+url: "not-a-url"  -> exit 0   ✓ 87 checks passed
+```
+
+V19 只判 `typeof value === 'string' && value.trim() !== ''`，V14 只在 url 里出现 `/tree/<branch>` 时才判分支名，于是任意字符串 url 都能过。范围判定交回编排者：不在 `01-06-PLAN.md` 声明的 T-01-22 缓解措施内，且 config 侧 `url` 同样无形状校验（既有对称缺口），故记 LOW 而非 MEDIUM。
+
+**对「HI-04 是否真的闭合」的判断：闭合。** 原证词点名的五种篡改（删 `url` / 删 `maintainer` / `maintainer: 42` / `maintainer: null` / `url: true`）现在全部 exit 1 且被 V19 点名正确键名与实测类型，本轮另行补测的纯空白、`0`、嵌套 mapping、空文件、数组顶层、标量顶层 6 种输入也全部 exit 1；`if (has(key))` 静默短路的根因在结构与行为两个层面都已消除。遗留问题不是「守卫失效」，而是「守卫的部分行缺测试」（R3-01）与「同一类坏值仍有下一种形态未守」（R3-03）。
+
+_Reviewed: 2026-10-27T09:05:00Z_
+_Reviewer: Claude (gsd-code-reviewer)_
+_Depth: deep_
