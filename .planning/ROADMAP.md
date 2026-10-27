@@ -46,8 +46,13 @@
   4. App 用户在配置页可见至少「日志级别」与「HA URL 覆盖」两个选项，带 `options` + `schema` 类型与默认值（配置文件层面可校验）。
   5. 「在 HAOS 添加仓库并看到 HomeWeave 条目」被写入实机验证清单，并明确标注为 **HAOS 未验证**。
 **Plans**: 3/3 plans executed
+**Wave 1**
 - [x] 01-01-PLAN.md — 仓库结构与两个生成物（`repository.yaml` + `homeweave_app/config.yaml`）
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [x] 01-02-PLAN.md — 静态校验器 `pnpm validate:app`（V1–V15，58 项检查）
+
+**Wave 3** *(blocked on Wave 2 completion)*
 - [x] 01-03-PLAN.md — 负向测试证据层 `pnpm test:app`（15 例）+ `docs/21` §5/§11 同步
 
 计划切片（供 plan-phase 细化，预期 4 plans）：

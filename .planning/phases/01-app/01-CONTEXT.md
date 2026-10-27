@@ -47,7 +47,7 @@
   - `boot` 与 `startup` **不显式写**（D-07a）：默认值分别为 `auto` 与 `application`，显式写出与省略在行为上完全等价
   - `/data` 持久化**不需要任何字段**：官方参考明确其为 “Always mounted read and write”，故 APP-02 的“`/data` 持久化”由平台隐式满足，无需 `map`
   - `apparmor` 不写等于默认 `true`（即启用默认 profile），不是“关闭安全约束”；这意味着 Phase 2 的容器必须能在 Docker 默认 AppArmor profile 下运行
-- **D-08:** `watchdog` 推迟到 Phase 3 —— 它要指向 `/health/live`，该端点在 Phase 3 才存在；提前写入会让 Supervisor 持续判定 App 不健康
+- **D-08 [deferred]:** `watchdog` 推迟到 Phase 3 —— 它要指向 `/health/live`，该端点在 Phase 3 才存在；提前写入会让 Supervisor 持续判定 App 不健康
 - **D-09:** `options`/`schema` 落两项，与 APP-04 原文一致：
   - `log_level`：枚举 `info` / `debug` / `warn`
   - `ha_url`：`string`，默认空字符串，空值语义 = 走 Supervisor 自动发现
@@ -67,10 +67,10 @@
 
 `01-RESEARCH.md` 现场核对官方参考与 Supervisor 源码后，暴露出 4 处需要重新裁决的点。以下修订**覆盖**上文对应决策，规划者以本节为准：
 
-- **D-01a（修订 D-01）：镜像路径小写化。** `image` 必须全小写 `ghcr.io/zee1988/homeweave-ha-app`；`url` 与 `maintainer` 保留 `Zee1988` / `Zee`。理由：OCI/GHCR 镜像仓库路径不接受大写，按 `Zee1988` 写入会在 Phase 2 首推失败，且 `image` 前缀属 costly 变更（会改变已安装用户的更新源）。
-- **D-03a（修订 D-03）：最低版本 = 当前稳定版。** `homeassistant: "2026.10.0"`，证据为 2026-10-27 实取 `https://version.home-assistant.io/stable.json`。放弃 2024.x 保守基线，因为该基线在 2024.x 期没有任何正向证据（研究仅能标 `[ASSUMED]`），而“未验证却声明兼容”违背项目规则。降级风险可控：`_SCHEMA_APP_CONFIG` 使用 `extra=vol.REMOVE_EXTRA`，旧版 Supervisor 遇到不认识的键会静默忽略而非拒绝加载。
-- **D-05a（修订 D-05）：把唯一性断言加回校验器。** 研究以 `supervisor/store/data.py` 的 `glob("**/config.*")` 证明仓库发现是**递归**的，`.example` 后缀仅靠后缀白名单逃过识别；任何新增的真实 `config.yaml` 都会变成第二个 App。因此唯一性检查从“人工评审”升级为自动化断言，ROADMAP 成功标准 2 由此满足。
-- **D-07a（确认 D-07）：`boot` / `startup` 不显式写。** 二者默认 `auto` / `application`，省略与显写等价；APP-02 所称“启动/停止字段”由 `init: false`、隐式 `/data` 挂载与平台默认值共同满足。
+- **D-01a: 镜像路径小写化（修订 D-01）。** `image` 必须全小写 `ghcr.io/zee1988/homeweave-ha-app`；`url` 与 `maintainer` 保留 `Zee1988` / `Zee`。理由：OCI/GHCR 镜像仓库路径不接受大写，按 `Zee1988` 写入会在 Phase 2 首推失败，且 `image` 前缀属 costly 变更（会改变已安装用户的更新源）。
+- **D-03a: 最低版本 = 当前稳定版（修订 D-03）。** `homeassistant: "2026.10.0"`，证据为 2026-10-27 实取 `https://version.home-assistant.io/stable.json`。放弃 2024.x 保守基线，因为该基线在 2024.x 期没有任何正向证据（研究仅能标 `[ASSUMED]`），而“未验证却声明兼容”违背项目规则。降级风险可控：`_SCHEMA_APP_CONFIG` 使用 `extra=vol.REMOVE_EXTRA`，旧版 Supervisor 遇到不认识的键会静默忽略而非拒绝加载。
+- **D-05a: 把唯一性断言加回校验器（修订 D-05）。** 研究以 `supervisor/store/data.py` 的 `glob("**/config.*")` 证明仓库发现是**递归**的，`.example` 后缀仅靠后缀白名单逃过识别；任何新增的真实 `config.yaml` 都会变成第二个 App。因此唯一性检查从“人工评审”升级为自动化断言，ROADMAP 成功标准 2 由此满足。
+- **D-07a: `boot` / `startup` 不显式写（确认 D-07）。** 二者默认 `auto` / `application`，省略与显写等价；APP-02 所称“启动/停止字段”由 `init: false`、隐式 `/data` 挂载与平台默认值共同满足。
 - **S2 登记（不改变决策）：** `ingress: true` 在 Phase 5 之前会让 App 详情页出现一个指向空端口的 “Open Web UI” 按钮。这是既定后果，需写进验收说明，不得在实机验证时误判为缺陷。
 - **S4 更正：** `hassio_api` 与 `homeassistant_api` **不是**改名关系，二者语义不同且各自默认 `false`。本阶段只写 `homeassistant_api: true`。
 
