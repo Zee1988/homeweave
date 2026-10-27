@@ -1,0 +1,48 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": "v1.0",
+  "phases": [
+    {
+      "number": "1",
+      "name": "App 元数据与仓库可识别性",
+      "status": "pending"
+    },
+    {
+      "number": "2",
+      "name": "镜像构建与发布链路",
+      "status": "pending"
+    },
+    {
+      "number": "3",
+      "name": "运行时骨架",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "数据持久化与受控迁移",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Ingress Web UI 与认证边界",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Home Assistant 连接与自检",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "文档与三类验证证据",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd-progress --next",
+    "label": "Advance to the next step",
+    "reason": "Phase 1 of 7 · executing"
+  },
+  "updated_at": "2026-10-27T06:14:21.054Z"
+}
