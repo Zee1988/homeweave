@@ -26,20 +26,27 @@
   - Git 仓库 URL = `https://github.com/Zee1988/homeweave`
   - `maintainer` = `Zee`
   - 源码路径分支用 **`master`**（当前默认分支），**不是** `main` — 模板里的 `tree/main` 会 404
+  - **镜像路径必须全小写**：`image` = `ghcr.io/zee1988/homeweave-ha-app`（owner 小写 `zee1988`）；`repository.yaml` 的 `url` 与 `maintainer` 仍为 `Zee1988` / `Zee`。见 D-01a
   — **Reversibility:** costly — `repository.yaml` 的 `url` 与 `image` 前缀一旦被用户添加为自定义仓库，改名会让已安装用户的更新源失效，需用户重新添加仓库
 - **D-02:** 单一来源 + 生成。真实值只在**一份**元数据源文件（`homeweave_app/app-metadata.json`）中维护，由生成脚本产出 `repository.yaml` 与 `homeweave_app/config.yaml`；仓库内禁止出现两份手工维护、可能互相不一致的元数据
-- **D-03:** 最低 Home Assistant / Supervisor 版本取**保守基线**（HA 2024.x 级别），不依赖很新的字段；实施时必须先核实该基线版本下各字段（`ingress`、`ingress_port`、`homeassistant_api`、`options`/`schema`）确实可用，再写入 `homeassistant` 字段
+- **D-03:** 最低 Home Assistant 版本取**当前稳定版**（覆盖原“保守基线”方案，见 D-03a）：`homeassistant: "2026.10.0"`。依据是 2026-10-27 实取的官方 `https://version.home-assistant.io/stable.json`（`homeassistant.default=2026.10.4`、`supervisor=2026.10.4`、`channel=stable`）。代价：放弃对 2026.10 之前版本的兼容声明，换取“声明值即当前可核验态”。仍然**不得**声称已在 HAOS 实机验证
   — **Reversibility:** costly — `homeassistant` 是已发布的安装契约，后续调高会让低版本用户无法安装，调低则等于宣称未验证的兼容性
 
 ### 校验命令形态
 
 - **D-04:** 校验命令**自写 Node 实现**，只引入 `js-yaml` 一个依赖；不使用 `home-assistant/builder` 或官方 addon-linter 容器（本地与 CI 都不必装 Docker，秒级完成）。代价：官方 schema 的字段清单由仓内自行维护
-- **D-05:** 校验范围**只做格式与必填**：YAML 语法、必填字段（`name`/`slug`/`version`/`arch`/`image`/`ingress_port` 等）、类型与枚举（`arch` 仅允许 `amd64`/`aarch64`）。**不做**仓库内 `config.yaml` 唯一性扫描，**不做** `repository.yaml.url` 与 `git remote` 的交叉一致性校验
+- **D-05:** 校验范围**只做格式与必填 + 一项唯一性断言**（见 D-05a）：
+  - YAML 语法、必填字段（`name`/`slug`/`version`/`arch`/`image`/`ingress_port` 等）、类型与枚举（`arch` 仅允许 `amd64`/`aarch64`）
+  - **唯一性**：递归扫描 `**/config.{yaml,yml,json}`（跳过 `.` 开头路径段与 `rootfs`），断言全仓只有一份——这是唯一被纳入的“结构类”检查，直接对应 ROADMAP 成功标准 2 与 APP-02 的“不得有第二份会被 Supervisor 递归识别的 config.yaml”
+  - **仍然不做**交叉一致性校验（`repository.yaml.url` vs `git remote`、源码 `tree/<branch>` 真实性），那属于人工/后续阶段
 - **D-06:** 交付形态为仓根最小 `package.json` + `scripts/validate-app-metadata.mjs`，统一入口 `pnpm validate:app`，Phase 2 的 CI 直接调用该入口，不再重构
 
 ### config.yaml 字段边界
 
-- **D-07:** 只写**最小可识别字段集**：`name`、`slug`、`version`、`description`、`url`、`arch`、`init`、`image`、`homeassistant_api`、`ingress`、`ingress_port`，加上 `options`/`schema`。**不写** `watchdog`、`panel_title`、`panel_icon`、`map`、`backup`、`devices`、`apparmor`、`ports`（`ports: 8124/tcp` 保持注释状态）
+- **D-07:** 只写**最小可识别字段集**：`name`、`slug`、`version`、`description`、`url`、`arch`、`init`、`image`、`homeassistant`、`homeassistant_api`、`ingress`、`ingress_port`，加上 `options`/`schema`。**不写** `watchdog`、`panel_title`、`panel_icon`、`map`、`backup`、`devices`、`apparmor`、`ports`（`ports: 8124/tcp` 保持注释状态）
+  - `boot` 与 `startup` **不显式写**（D-07a）：默认值分别为 `auto` 与 `application`，显式写出与省略在行为上完全等价
+  - `/data` 持久化**不需要任何字段**：官方参考明确其为 “Always mounted read and write”，故 APP-02 的“`/data` 持久化”由平台隐式满足，无需 `map`
+  - `apparmor` 不写等于默认 `true`（即启用默认 profile），不是“关闭安全约束”；这意味着 Phase 2 的容器必须能在 Docker 默认 AppArmor profile 下运行
 - **D-08:** `watchdog` 推迟到 Phase 3 —— 它要指向 `/health/live`，该端点在 Phase 3 才存在；提前写入会让 Supervisor 持续判定 App 不健康
 - **D-09:** `options`/`schema` 落两项，与 APP-04 原文一致：
   - `log_level`：枚举 `info` / `debug` / `warn`
@@ -55,6 +62,17 @@
 ### Folded Todos
 
 无 —— `todo.match-phase 1` 返回 0 条待办。
+
+### 研究裁决修订（2026-10-27，规划前）
+
+`01-RESEARCH.md` 现场核对官方参考与 Supervisor 源码后，暴露出 4 处需要重新裁决的点。以下修订**覆盖**上文对应决策，规划者以本节为准：
+
+- **D-01a（修订 D-01）：镜像路径小写化。** `image` 必须全小写 `ghcr.io/zee1988/homeweave-ha-app`；`url` 与 `maintainer` 保留 `Zee1988` / `Zee`。理由：OCI/GHCR 镜像仓库路径不接受大写，按 `Zee1988` 写入会在 Phase 2 首推失败，且 `image` 前缀属 costly 变更（会改变已安装用户的更新源）。
+- **D-03a（修订 D-03）：最低版本 = 当前稳定版。** `homeassistant: "2026.10.0"`，证据为 2026-10-27 实取 `https://version.home-assistant.io/stable.json`。放弃 2024.x 保守基线，因为该基线在 2024.x 期没有任何正向证据（研究仅能标 `[ASSUMED]`），而“未验证却声明兼容”违背项目规则。降级风险可控：`_SCHEMA_APP_CONFIG` 使用 `extra=vol.REMOVE_EXTRA`，旧版 Supervisor 遇到不认识的键会静默忽略而非拒绝加载。
+- **D-05a（修订 D-05）：把唯一性断言加回校验器。** 研究以 `supervisor/store/data.py` 的 `glob("**/config.*")` 证明仓库发现是**递归**的，`.example` 后缀仅靠后缀白名单逃过识别；任何新增的真实 `config.yaml` 都会变成第二个 App。因此唯一性检查从“人工评审”升级为自动化断言，ROADMAP 成功标准 2 由此满足。
+- **D-07a（确认 D-07）：`boot` / `startup` 不显式写。** 二者默认 `auto` / `application`，省略与显写等价；APP-02 所称“启动/停止字段”由 `init: false`、隐式 `/data` 挂载与平台默认值共同满足。
+- **S2 登记（不改变决策）：** `ingress: true` 在 Phase 5 之前会让 App 详情页出现一个指向空端口的 “Open Web UI” 按钮。这是既定后果，需写进验收说明，不得在实机验证时误判为缺陷。
+- **S4 更正：** `hassio_api` 与 `homeassistant_api` **不是**改名关系，二者语义不同且各自默认 `false`。本阶段只写 `homeassistant_api: true`。
 
 </decisions>
 
@@ -122,7 +140,7 @@
 - **App 条目完整度**（`icon.png` / `logo.png` / 最小 `DOCS.md` / `README.md` / `CHANGELOG.md`）：本阶段未选入讨论，暂按 DOC-01 / DOC-06 归 Phase 7。风险记录：缺 `DOCS.md` 时 App 详情页"Documentation"入口为空，若 HAOS 实机验证发现条目因此不可用，需在 Phase 7 之前回补最小占位
 - **`watchdog` 字段** → Phase 3（依赖 `/health/live`）
 - **`ha_url` 的 SSRF 防护、超时与重定向校验** → Phase 6（HA-04）
-- **仓库内 `config.yaml` 唯一性的自动化断言**：本阶段明确不做（D-05），仅靠 `.example` 后缀约定 + 人工评审
+- ~~**仓库内 `config.yaml` 唯一性的自动化断言**：本阶段明确不做（D-05），仅靠 `.example` 后缀约定 + 人工评审~~ → **已改判**：按 D-05a 纳入本阶段校验器
 - **官方 addon-linter / builder 校验**：作为 CI 可选兜底留待 Phase 2 评估
 - **AppArmor profile、`backup`、`map`、`devices`、原生 API `ports` 开放** → Phase 2 / Phase 5 及之后
 
