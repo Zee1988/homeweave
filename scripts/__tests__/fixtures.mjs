@@ -90,6 +90,33 @@ export function toYaml(value) {
   return `${serialize(value, 0).join('\n')}\n`;
 }
 
+/**
+ * The D-07 trailing block, byte-identical to the end of the real homeweave_app/config.yaml:
+ * the "# ports:" heading plus the commented-out port mapping. ports stays commented until
+ * Phase 5 delivers HomeWeave's own authentication and authorization.
+ *
+ * This constant exists because V18 asserts the warning block survives, and V18 is an
+ * unconditional check -- so EVERY baseline this module writes has to carry the block, not just
+ * the one makeValidTree() produces. Without it, three exit-0 cases on the makeValidTree() path
+ * go red, and every negative case becomes "true for two reasons at once" (its own defect plus a
+ * missing comment block) while assertDetects() can only see that one code appeared. A fixture
+ * baseline that is illegal by construction makes every negative case below worthless.
+ */
+const PORTS_COMMENT_BLOCK = '# ports:\n#   8124/tcp: 8124\n';
+
+/**
+ * Append the D-07 comment block to a serialized config.yaml.
+ *
+ * The single assembly point on purpose: both writers of homeweave_app/config.yaml (makeValidTree
+ * and writeConfig) go through here, so a future helper cannot forget the block and silently
+ * hollow out the V18 negative case. It is deliberately NOT a general comment feature of
+ * serialize()/toYaml() -- the serializer stays a plain value writer, and the one comment we
+ * depend on is declared in exactly one place.
+ */
+export function withPortsComment(yaml) {
+  return `${yaml}${PORTS_COMMENT_BLOCK}`;
+}
+
 function writeFile(root, relativePath, contents) {
   const full = join(root, relativePath);
   mkdirSync(dirname(full), { recursive: true });
@@ -101,7 +128,7 @@ function writeFile(root, relativePath, contents) {
 export function makeValidTree() {
   const root = mkdtempSync(join(tmpdir(), 'hw-app-'));
   writeFile(root, 'repository.yaml', toYaml(VALID_REPOSITORY));
-  writeFile(root, 'homeweave_app/config.yaml', toYaml(VALID_CONFIG));
+  writeFile(root, 'homeweave_app/config.yaml', withPortsComment(toYaml(VALID_CONFIG)));
   return root;
 }
 
@@ -113,7 +140,10 @@ export function makeValidTree() {
 export function writeConfig(root, mutate) {
   const next = structuredClone(VALID_CONFIG);
   mutate(next);
-  return writeFile(root, 'homeweave_app/config.yaml', toYaml(next));
+  // Same withPortsComment() path as makeValidTree(): a mutation must change exactly the one
+  // property it names, never the D-07 block. Otherwise every negative case built here would
+  // also trip V18 and pass for the wrong reason.
+  return writeFile(root, 'homeweave_app/config.yaml', withPortsComment(toYaml(next)));
 }
 
 /** Rewrite the repository manifest through a mutation callback. */

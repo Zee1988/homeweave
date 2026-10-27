@@ -67,6 +67,28 @@ const SUPPORTED_ARCH = ['amd64', 'aarch64'];
 
 const LOG_LEVELS = ['info', 'debug', 'warn'];
 
+// The literal values this phase locks into the install contract (decisions D-01a and D-03a).
+//
+// Changing any of these is a COSTLY change, not a routine edit: "image" decides which registry
+// every installed user pulls updates from, and "version"/"homeassistant" decide what Supervisor
+// considers an upgrade. Bumping a value here without a matching, deliberate CONTEXT decision
+// would silently move existing installs to a different image or a different minimum HA version.
+//
+// This constant is a copy, NOT the source of truth. Provenance stays homeweave_app/app-metadata.json
+// -> scripts/generate-app-metadata.mjs -> the generated files. V17 exists precisely because that
+// chain is trusted: it is the tripwire that fires when a hand edit bypasses the chain.
+const CONTRACT = {
+  image: 'ghcr.io/zee1988/homeweave-ha-app',
+  version: '0.1.0',
+  homeassistant: '2026.10.0',
+  slug: 'homeweave',
+};
+
+// Content fragments the D-07 warning block must keep. Both are asserted as substrings of the
+// raw file text, never as a formatting pattern: indentation, quoting and line order are all
+// free to change, because only the survival of the visible warning matters.
+const PORTS_COMMENT_MARKERS = ['# ports:', '8124/tcp'];
+
 const failures = [];
 const texts = new Map();
 let checksRun = 0;
@@ -444,6 +466,44 @@ if (config) {
       'V16',
       CONFIG_FILE,
       `"homeassistant" must look like <major>.<minor>.<patch>, got "${config.homeassistant}"`,
+    );
+  }
+}
+
+// V17: the contract literals. V6 already proves the image is a bare ghcr.io/ reference; this
+// proves it is OUR reference, and that version / homeassistant / slug are the exact values
+// D-01a and D-03a locked. Without it, "the artifact happens to be correct today" is the only
+// guarantee -- a hand edit that changes the owner, the image name or the minimum HA version
+// would still pass every other check and silently redirect existing installs.
+//
+// has() is used only to avoid reporting the same missing key twice (V2 owns presence).
+if (config) {
+  for (const [key, expected] of Object.entries(CONTRACT)) {
+    if (!has(config, key)) continue;
+    check(
+      config[key] === expected,
+      'V17',
+      CONFIG_FILE,
+      `"${key}" must be exactly "${expected}" (D-01a/D-03a contract; changing it changes the install contract for existing users), got ${describe(config[key])} "${config[key]}"`,
+    );
+  }
+}
+
+// V18: the D-07 warning block must survive in the generated config.yaml.
+//
+// ports stays commented out until Phase 5 ships HomeWeave's own auth; the block is the only
+// in-file record of why. A generated file is easy to regenerate and easy to "tidy", and a
+// serialiser would drop the comment without a word -- so its survival is asserted instead of
+// reviewed. This is a CONTENT assertion: it does not care about indentation width, quote style
+// or line order.
+const configText = texts.get(CONFIG_FILE);
+if (configText !== undefined) {
+  for (const marker of PORTS_COMMENT_MARKERS) {
+    check(
+      configText.includes(marker),
+      'V18',
+      CONFIG_FILE,
+      `the commented-out ports block lost "${marker}"; D-07 keeps ports disabled until HomeWeave's own auth exists, and this block is the only in-file record of why`,
     );
   }
 }

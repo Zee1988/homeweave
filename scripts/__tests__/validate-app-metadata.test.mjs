@@ -319,6 +319,89 @@ test('V16: a quoted homeassistant with the same value still passes', (t) => {
 });
 
 // ---------------------------------------------------------------------------------------
+// V17 -- the contract literals (D-01a / D-03a). Each case changes the value in a way that every
+// other check would happily accept: a different-but-valid owner, a different-but-valid version,
+// a different-but-valid minimum HA version. Only V17 can tell these apart from the contract.
+// ---------------------------------------------------------------------------------------
+test('V17: a different image owner is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.image = 'ghcr.io/somebody-else/totally-different';
+  });
+
+  assertDetects(runValidator(root), 'V17', 'image owner swap');
+});
+
+test('V17: a bumped version is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.version = '0.1.1';
+  });
+
+  assertDetects(runValidator(root), 'V17', 'version=0.1.1');
+});
+
+test('V17: a different homeassistant minimum is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.homeassistant = '2026.10.9';
+  });
+
+  assertDetects(runValidator(root), 'V17', 'homeassistant=2026.10.9');
+});
+
+// ---------------------------------------------------------------------------------------
+// V18 / the V8 complement -- the two halves of D-07 ("ports stays commented until Phase 5").
+//
+// Deleting a comment cannot be expressed as an object-level mutation, so this case rewrites the
+// source text. The existence assertion before deletion is what keeps it from being a vacuous
+// run: without it, a baseline that never carried the block would "pass" this test by deleting
+// nothing at all.
+// ---------------------------------------------------------------------------------------
+test('V18: deleting the commented ports block is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+
+  const configPath = join(root, CONFIG_PATH_IN_TREE);
+  const text = readFileSync(configPath, 'utf8');
+  assert.ok(/^# ports:/m.test(text), `baseline has no "# ports:" line to delete\n${text}`);
+  assert.ok(text.includes('8124/tcp'), `baseline has no "8124/tcp" marker to delete\n${text}`);
+
+  const stripped = text
+    .split('\n')
+    .filter((line) => !line.startsWith('# ports:') && !line.includes('8124/tcp'))
+    .join('\n');
+  assert.doesNotMatch(stripped, /^# ports:/m, `the "# ports:" line survived the rewrite\n${stripped}`);
+  writeFileSync(configPath, stripped, 'utf8');
+
+  assertDetects(runValidator(root), 'V18', 'deleted ports comment block');
+});
+
+// The complement. Uncommenting the block turns ports into a live key, which is the other way
+// D-07 can be broken -- and the one V18 alone would NOT catch, since "8124/tcp" survives the
+// edit. V8's unknown-key rejection is what closes that path; pairing the two proves neither
+// check is redundant.
+test('V8: uncommenting ports is rejected as an unknown key', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+
+  const configPath = join(root, CONFIG_PATH_IN_TREE);
+  const text = readFileSync(configPath, 'utf8');
+  assert.ok(/^# ports:/m.test(text), `baseline has no "# ports:" line to uncomment\n${text}`);
+
+  const enabled = text
+    .replace(/^# ports:$/m, 'ports:')
+    .replace(/^#   8124\/tcp: 8124$/m, '  8124/tcp: 8124');
+  assert.doesNotMatch(enabled, /^# ports:$/m, `the "# ports:" line was not uncommented\n${enabled}`);
+  writeFileSync(configPath, enabled, 'utf8');
+
+  assertDetects(runValidator(root), 'V8', 'uncommented ports');
+});
+
+// ---------------------------------------------------------------------------------------
 // Closing gate: after every fixture above has been cleaned up, the repository tree itself
 // must still validate. This turns "fixtures must never leak into the repo" from a code
 // review habit into an automated conclusion -- a leaked config.yaml fails V15 here.
