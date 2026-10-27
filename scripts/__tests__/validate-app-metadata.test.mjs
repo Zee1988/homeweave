@@ -19,6 +19,8 @@
  * quotes are semantically equivalent in YAML, so asserting on them would produce false reds.
  */
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
@@ -30,6 +32,9 @@ import {
   writeExtraConfig,
   writeRepository,
 } from './fixtures.mjs';
+
+/** Path of the generated app config inside a fixture tree. */
+const CONFIG_PATH_IN_TREE = join('homeweave_app', 'config.yaml');
 
 /** Assert a run failed with the given check code and nothing else was assumed. */
 function assertDetects(result, code, label) {
@@ -229,6 +234,88 @@ test('V11: an optional schema key ("?") needs no default in options', (t) => {
 
   assert.notEqual(result.status, null, `validator process never started (${result.error?.message ?? 'unknown'})`);
   assert.equal(result.status, 0, `optional key must not require a default, got exit ${result.status}\n${result.stdout}`);
+});
+
+// ---------------------------------------------------------------------------------------
+// V16 -- the "YAML parsed this into something else" family. Four shapes, one case each:
+// a list, a number, a string that is not x.y.z, and a string that is not a valid slug.
+// All four are object-level mutations: none of them depends on how the YAML was quoted.
+// ---------------------------------------------------------------------------------------
+test('V16: slug with uppercase and a space is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.slug = 'HomeWeave bad';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'slug=HomeWeave bad');
+  assert.match(result.stdout, /"slug"/, `slug not named in the failure\n${result.stdout}`);
+});
+
+test('V16: a numeric name is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.name = 12345;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'name=12345');
+  assert.match(result.stdout, /"name"/, `name not named in the failure\n${result.stdout}`);
+});
+
+test('V16: homeassistant that is not x.y.z is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    // Unquoted 2026.1 is parsed as the float 2026.1: the trailing component is gone.
+    config.homeassistant = '2026.1';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'homeassistant=2026.1');
+  assert.match(result.stdout, /"homeassistant"/, `homeassistant not named in the failure\n${result.stdout}`);
+});
+
+test('V16: a list description is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeConfig(root, (config) => {
+    config.description = ['alpha'];
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V16', 'description=[alpha]');
+  assert.match(result.stdout, /"description"/, `description not named in the failure\n${result.stdout}`);
+});
+
+// The positive control that makes V16 trustworthy: it must not depend on quote style. The
+// fixture serializer never quotes "2026.10.0" (it is a plain scalar), so this quoted form can
+// only be produced by rewriting the source text -- an object-level mutation cannot express it.
+// Rewriting line by line, matching the FIRST line that starts with "homeassistant:", avoids a
+// whole-text regex accidentally touching a same-named substring elsewhere in the file.
+test('V16: a quoted homeassistant with the same value still passes', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+
+  const configPath = join(root, CONFIG_PATH_IN_TREE);
+  const text = readFileSync(configPath, 'utf8');
+  const lines = text.split('\n');
+  const index = lines.findIndex((line) => line.startsWith('homeassistant:'));
+  assert.notEqual(index, -1, `fixture baseline has no homeassistant: line\n${text}`);
+  lines[index] = 'homeassistant: "2026.10.0"';
+  writeFileSync(configPath, lines.join('\n'), 'utf8');
+
+  const result = runValidator(root);
+
+  assert.notEqual(result.status, null, `validator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 0, `quote style must not matter, got exit ${result.status}\n${result.stdout}`);
+  assert.match(result.stdout, /checks passed/, result.stdout);
 });
 
 // ---------------------------------------------------------------------------------------

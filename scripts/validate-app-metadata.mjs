@@ -393,6 +393,61 @@ for (const [label, data] of [
   }
 }
 
+// V16: type and shape of the string-valued fields. This is the "YAML parsed the value into
+// something we did not expect" family -- the silent-information-loss trap V4 already guards for
+// "version", generalised to the rest of the fields. Two failure shapes live here:
+//
+//   - the node is not a string at all (a bare 12345 becomes a number, [alpha] becomes a list);
+//   - the node is a string but does not match the shape Supervisor expects.
+//
+// Every assertion reads the PARSED value, never the source text: quote style is not checked
+// anywhere in this file, because `slug: homeweave` and `slug: "homeweave"` are the same value.
+//
+// The has() wrapper below is the one place it is allowed. Presence belongs to V2, so wrapping
+// here means "skip the shape check when V2 has already reported the key missing" -- it does not
+// weaken presence enforcement, and it keeps one missing key from producing two failures.
+const STRING_FIELDS = ['name', 'slug', 'version', 'description', 'url', 'homeassistant'];
+
+// Supervisor's own RE_SLUG: lowercase alphanumerics plus _ and -, never starting with a
+// separator. A slug that fails this is rejected on the Supervisor side, which we cannot test.
+const SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]*$/;
+
+// An unquoted 2026.10 is parsed as the float 2026.1, exactly like an unquoted 1.10 for
+// "version": the trailing component is silently lost, so the declared minimum HA version
+// becomes a different, weaker one without any error.
+const VERSION_TRIPLE_PATTERN = /^\d+\.\d+\.\d+$/;
+
+if (config) {
+  for (const key of STRING_FIELDS) {
+    if (!has(config, key)) continue;
+    const value = config[key];
+    check(
+      typeof value === 'string' && value.trim() !== '',
+      'V16',
+      CONFIG_FILE,
+      `"${key}" must parse as a non-empty string, got ${describe(value)}`,
+    );
+  }
+
+  if (has(config, 'slug') && typeof config.slug === 'string') {
+    check(
+      SLUG_PATTERN.test(config.slug),
+      'V16',
+      CONFIG_FILE,
+      `"slug" must match ${SLUG_PATTERN.source} (Supervisor's RE_SLUG), got "${config.slug}"`,
+    );
+  }
+
+  if (has(config, 'homeassistant') && typeof config.homeassistant === 'string') {
+    check(
+      VERSION_TRIPLE_PATTERN.test(config.homeassistant),
+      'V16',
+      CONFIG_FILE,
+      `"homeassistant" must look like <major>.<minor>.<patch>, got "${config.homeassistant}"`,
+    );
+  }
+}
+
 // V15: exactly one Supervisor-discoverable config file may exist in the repository.
 //
 // Supervisor discovers apps with path.glob("**/config.*") and keeps only paths whose every
