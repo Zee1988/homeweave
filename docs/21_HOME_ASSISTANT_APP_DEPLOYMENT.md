@@ -91,8 +91,8 @@ image: ghcr.io/<owner>/homeweave-ha-app
 homeassistant_api: true
 ingress: true
 ingress_port: 8099
-ports:
-  8124/tcp: 8124
+# ports:
+#   8124/tcp: 8124
 ```
 
 注意：
@@ -100,6 +100,7 @@ ports:
 - 先发布镜像 `<version>`，再提交包含相同 `version` 的 `config.yaml`。不要复用已发布的版本标签。
 - `homeassistant_api: true` 会提供 Supervisor 的 Home Assistant API 访问能力；其令牌可执行高权限操作，必须只留在后端进程，禁止输出到日志、API 响应、前端或移动 App。服务端仍须实现最小权限的 Tool Registry 与 Policy Engine。
 - `ports` 示例为原生客户端 API 预留宿主机端口。只有在后端自己的认证与授权完成后才可开放；不要把未经认证的管理 API 暴露在局域网。若版本初期不支持安全的原生 App 连接，可暂不发布该端口并先交付 Ingress Web 体验。
+- 上例中的 `ports` 与 `8124/tcp` 处于**注释状态**，被刻意排除在生效字段之外。按 D-07，`ports` 保持注释直到 Phase 5 交付 HomeWeave 自己的认证与授权；对外开放宿主机端口意味着局域网内任何设备都能直连 API，必须先有独立 API 认证、速率限制、授权与审计（S2 已登记该后果）。解除注释时须同时更新本节与 D-07 记录。
 - Ingress 令牌/路径是浏览器会话入口，不可当作原生 App 的长期 API 凭据。
 - App 默认持久化路径是 `/data`。SQLite 路径必须设为例如 `file:/data/homeweave.db`，并通过重启和升级测试验证。
 - 不需要为 SQLite 单独运行容器；Redis 不是 MVP 必需组件。
@@ -165,6 +166,7 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 - Supervisor token、HA token、模型 API key 不会出现在客户端、日志或 API 响应。
 - 原生 API 若启用，需通过独立认证、未授权访问拒绝、速率限制和安全传输测试。
 - 如果没有真实 Home Assistant OS 设备，必须把安装/升级验证标记为未验证，不能用普通 Docker Compose 测试替代。
+- 实机条目（**未在 HAOS 实机验证**，即 **HAOS 未验证**）：在 Home Assistant OS 的 Apps 商店添加自定义仓库 `https://github.com/Zee1988/homeweave` 后刷新，列表中出现 `HomeWeave` 条目，且该条目可以打开详情页。操作路径：设置 → 加载项商店 → 右上角仓库 → 添加上述 URL → 刷新。Phase 1 结束时该结果没有任何实机证据，因此只能记为待验证；不得据此认为仓库已被 Supervisor 识别。另注意「Open Web UI」按钮在 Phase 5 之前会指向空端口（S2 既定后果），实机核对时不应记为缺陷。
 
 ## 12. 官方参考
 
