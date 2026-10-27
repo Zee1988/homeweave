@@ -20,16 +20,17 @@ created: "2026-10-27"
 |----------|-------|
 | **Framework** | `node:test`（Node.js 内置，零额外依赖；与 D-04「只引入 js-yaml」一致） |
 | **Config file** | none — Wave 0 创建仓根 `package.json`、`scripts/validate-app-metadata.mjs` 与测试目录 |
-| **Quick run command** | `pnpm validate:app` |
-| **Full suite command** | `pnpm validate:app && node --test scripts/` |
+| **Quick run command** | `corepack pnpm validate:app` |
+| **Full suite command** | `corepack pnpm validate:app` 与 `corepack pnpm test:app`（后者含漂移守卫前置环节） |
+| **Drift guard** | `corepack pnpm check:app`（`test:app` 的先决环节，失败则 `node:test` 不执行） |
 | **Estimated runtime** | ~2 秒（纯静态 YAML 解析，无网络、无 Docker） |
 
 ---
 
 ## Sampling Rate
 
-- **After every task commit:** Run `pnpm validate:app`
-- **After every plan wave:** Run `pnpm validate:app && node --test scripts/`
+- **After every task commit:** Run `corepack pnpm validate:app`
+- **After every plan wave:** Run `corepack pnpm validate:app` 与 `corepack pnpm test:app`
 - **Before `/gsd:verify-work`:** Full suite must be green
 - **Max feedback latency:** 5 秒
 
@@ -45,8 +46,8 @@ created: "2026-10-27"
 | TBD | 01 | 1 | APP-02 | — | `config.yaml` 必填键齐全、`arch` 仅 `amd64`/`aarch64`、`image` 不带 tag | unit | `pnpm validate:app` | ❌ W0 | ⬜ pending |
 | TBD | 01 | 1 | APP-02 | — | 全仓递归只有一份 `config.{yaml,yml,json}`（跳过点目录与 `rootfs`） | unit | `pnpm validate:app` | ❌ W0 | ⬜ pending |
 | TBD | 01 | 1 | APP-04 | — | `options`/`schema` 两项通过 schema DSL 子集校验，默认值存在 | unit | `pnpm validate:app` | ❌ W0 | ⬜ pending |
-| TBD | 01 | 1 | APP-02 | — | 校验器负向用例：篡改必填键/大小写/多份 config 时必须非零退出 | unit | `node --test scripts/` | ❌ W0 | ⬜ pending |
-| TBD | 01 | 1 | APP-01 | — | 生成脚本重复执行产出逐字节一致的 YAML（幂等，无手改漂移） | unit | `node --test scripts/` | ❌ W0 | ⬜ pending |
+| TBD | 01 | 1 | APP-02 | — | 校验器负向用例：篡改必填键/大小写/多份 config 时必须非零退出 | unit | `corepack pnpm test:app` | ❌ W0 | ⬜ pending |
+| TBD | 01 | 1 | APP-01 | — | 生成脚本重复执行产出逐字节一致的 YAML（幂等，无手改漂移） | unit | `corepack pnpm check:app`、`corepack pnpm test:app` | ❌ W0 | ⬜ pending |
 
 *Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
 
