@@ -59,6 +59,47 @@
 3. 先完成 Phase 0 仓库审查，不要立即大规模重写。
 4. 按 `docs/11_IMPLEMENTATION_ROADMAP.md` 分阶段实现，每阶段运行检查和测试后再继续。
 
+## 本地命令
+
+仓库根目录执行。首次需 `corepack pnpm install`；`corepack` 随 Node 22 提供，不要求全局安装 pnpm。
+
+| 命令 | 作用 |
+|---|---|
+| `corepack pnpm generate:app` | 由 `homeweave_app/config.yaml` 重新生成 `homeweave_app/app-metadata.json` |
+| `corepack pnpm check:app` | 校验元数据与配置是否同步（只读，不写文件） |
+| `corepack pnpm validate:app` | 按 HA App 规则校验配置与元数据 |
+| `corepack pnpm test:app` | `check:app` + 全部脚本单元测试 |
+| `corepack pnpm lint` | 全仓库零依赖 lint：`*.mjs` 语法、`*.yaml`、`*.json` |
+| `corepack pnpm typecheck` | 递归执行各包 `typecheck`；`apps/api` 真跑 `tsc --noEmit`，无包声明时判失败 |
+| `corepack pnpm test` | `test:app` + 递归执行各包 `test` |
+| `corepack pnpm --filter @homeweave/api build` | 编译后端到 `apps/api/dist`（`sourceMap` 关闭，镜像内无 `.map`） |
+
+两条事实：
+
+- `apps/api/package.json` 的 `version` 恒为 `0.0.0`，与 HA App 的 `0.1.0`（`homeweave_app/config.yaml`）刻意解耦：镜像 tag 只由 App version 推导，API version 既不参与计算，也不被 `config.yaml` 读取。
+- 本机没有 Docker，镜像构建、GHCR 推送、多架构清单与密钥扫描只能由 CI 验证；本地能闭环的只有编译与启动冒烟。
+
+### 启动冒烟（实测）
+
+2026-10-27，Node v22.17.0，Windows：
+
+```powershell
+$p = Start-Process node -ArgumentList 'apps/api/dist/main.js' -PassThru -RedirectStandardOutput apps/api/dist/boot.log
+Start-Sleep -Seconds 6
+Get-Content apps/api/dist/boot.log -Raw
+Stop-Process -Id $p.Id -Force
+```
+
+输出（已去掉 ANSI 颜色转义）：
+
+```text
+[Nest] 22548  - 10/27/2026, 5:32:52 PM     LOG [NestFactory] Starting Nest application...
+[Nest] 22548  - 10/27/2026, 5:32:52 PM     LOG [InstanceLoader] AppModule dependencies initialized +11ms
+[Nest] 22548  - 10/27/2026, 5:32:52 PM     LOG [NestApplication] Nest application successfully started +12ms
+```
+
+默认端口 8099，对齐 `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` 的 `ingress_port`，可用 `PORT` 覆盖。当前应用没有路由也没有 `/health`，属 Phase 03 范围。
+
 ## MVP 总体边界
 
 - iOS/Android 共用 Expo 客户端；React Native Web 提供可复用的 Web 目标。
