@@ -1,0 +1,51 @@
+{
+  "repository": {
+    "name": "HomeWeave Apps",
+    "url": "https://github.com/Zee1988/homeweave",
+    "maintainer": "Zee"
+  },
+  "app": {
+    "name": "HomeWeave",
+    "slug": "homeweave",
+    "version": "0.1.0",
+    "description": "AI Home Operating System for Home Assistant",
+    "url": "https://github.com/Zee1988/homeweave/tree/master/homeweave_app",
+    "arch": [
+      "amd64",
+      "aarch64"
+    ],
+    "init": false,
+    "image": "ghcr.io/zee1988/homeweave-ha-app",
+    "homeassistant": "2026.10.0",
+    "homeassistant_api": true,
+    "ingress": true,
+    "ingress_port": 8099,
+    "options": {
+      "log_level": "info",
+      "ha_url": ""
+    },
+    "optionDefs": {
+      "logLevel": {
+        "type": "enum",
+        "values": [
+          "info",
+          "debug",
+          "warn"
+        ],
+        "default": "info"
+      },
+      "haUrl": {
+        "type": "string",
+        "optional": true,
+        "default": ""
+      }
+    },
+    "commentedPortsComment": [
+      "Enable only after HomeWeave's own API authentication and authorization are implemented."
+    ],
+    "commentedPortsBlock": [
+      "ports:",
+      "  8124/tcp: 8124"
+    ]
+  }
+}

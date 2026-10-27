@@ -1,0 +1,15 @@
+{
+  "name": "homeweave",
+  "version": "0.1.0",
+  "private": true,
+  "description": "HomeWeave - AI Home Operating System for Home Assistant",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "generate:app": "node scripts/generate-app-metadata.mjs"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
+  }
+}

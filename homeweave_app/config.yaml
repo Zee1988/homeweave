@@ -1,0 +1,26 @@
+# Reference: https://contributors.home-assistant.io/apps/reference/configuration/
+name: HomeWeave
+slug: homeweave
+version: "0.1.0"
+description: AI Home Operating System for Home Assistant
+url: https://github.com/Zee1988/homeweave/tree/master/homeweave_app
+arch:
+  - amd64
+  - aarch64
+init: false
+image: ghcr.io/zee1988/homeweave-ha-app
+homeassistant: "2026.10.0"
+homeassistant_api: true
+ingress: true
+ingress_port: 8099
+options:
+  log_level: info
+  ha_url: ""
+schema:
+  log_level: list(info|debug|warn)
+  ha_url: "str?"
+
+# ports stays closed until Phase 5 delivers HomeWeave's own authentication and authorization.
+# Enable only after HomeWeave's own API authentication and authorization are implemented.
+# ports:
+#   8124/tcp: 8124
