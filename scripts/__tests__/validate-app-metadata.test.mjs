@@ -417,6 +417,118 @@ test('V19: a numeric maintainer is rejected', (t) => {
   assert.match(result.stdout, /got number/, `the type branch did not fire\n${result.stdout}`);
 });
 
+// One case per key, same discipline as V2's two blocks: deleting all three at once would still
+// exit 1 while proving nothing about which key inside repository.yaml is actually required.
+// The doesNotMatch(/checks passed/) assertions are written out explicitly so a future refactor
+// that demotes presence to a soft warning cannot pass silently.
+test('V19: missing required key "url" is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    delete repository.url;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'missing url');
+  assert.match(result.stdout, /"url"/, `url not named in the failure\n${result.stdout}`);
+  assert.doesNotMatch(result.stdout, /checks passed/, `a missing repository key still reported success\n${result.stdout}`);
+});
+
+test('V19: missing required key "maintainer" is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    delete repository.maintainer;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'missing maintainer');
+  assert.match(result.stdout, /"maintainer"/, `maintainer not named in the failure\n${result.stdout}`);
+  assert.doesNotMatch(result.stdout, /checks passed/, `a missing repository key still reported success\n${result.stdout}`);
+});
+
+test('V19: missing required key "name" is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    delete repository.name;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'missing name');
+  assert.match(result.stdout, /"name"/, `name not named in the failure\n${result.stdout}`);
+  // Deliberately NOT asserting "only V19 fires": V3 also guards "name" and reports it, and that
+  // double report is the intended behaviour (this validator only forbids under-reporting).
+});
+
+test('V19: a null maintainer is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.maintainer = null;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'maintainer=null');
+  assert.match(result.stdout, /"maintainer"/, `maintainer not named in the failure\n${result.stdout}`);
+  // "got null" rather than "got object": describe() special-cases null, and asserting the word
+  // is what proves the type branch fired on the value we injected.
+  assert.match(result.stdout, /got null/, `the type branch did not report null\n${result.stdout}`);
+});
+
+test('V19: a boolean url is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.url = true;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'url=true');
+  assert.match(result.stdout, /"url"/, `url not named in the failure\n${result.stdout}`);
+  assert.match(result.stdout, /got boolean/, `the type branch did not report a boolean\n${result.stdout}`);
+});
+
+test('V19: an empty-string maintainer is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.maintainer = '';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'maintainer=""');
+  assert.match(result.stdout, /"maintainer"/, `maintainer not named in the failure\n${result.stdout}`);
+  // "" IS a string, so a bare typeof check would accept it. Only the non-empty clause catches
+  // this case -- which is exactly why the type word here is "string", not something else.
+  assert.match(result.stdout, /got string/, `the empty-string branch did not fire\n${result.stdout}`);
+});
+
+// ---------------------------------------------------------------------------------------
+// V8, repository side. V8 already rejected unknown keys in config.yaml (proven above by the
+// "ingresss" and "uncommented ports" cases), but its repository.yaml branch had no negative case
+// at all -- so "unknown keys are rejected" was only half-proven, and the repository half could
+// have been inverted without any test going red.
+// ---------------------------------------------------------------------------------------
+test('V8: an unknown repository key is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.owner = 'Zee';
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V8', 'unknown repository key owner');
+  assert.match(result.stdout, /"owner"/, `the unknown key was not named\n${result.stdout}`);
+});
+
 // ---------------------------------------------------------------------------------------
 // V18 / the V8 complement -- the two halves of D-07 ("ports stays commented until Phase 5").
 //

@@ -276,6 +276,55 @@ test('a numeric repository.maintainer fails the generator without rewriting eith
   assert.equal(readFileSync(join(root, CONFIG_YAML_REL), 'utf8'), sentinel, 'config.yaml was rewritten by a failed run');
 });
 
+// The remaining two source-side repository failures. Registered as separate tests (one per
+// table entry, not one test looping internally) so a single broken branch cannot hide behind a
+// green sibling.
+//
+// The two expected messages differ on purpose, and that difference is the assertion: deleting a
+// key is caught much earlier, by assertConsumedKeys in main(), whose message is
+// "repository.url is missing (the generator reads it)" -- it never reaches
+// assertNonEmptyString. Asserting the same wording for both would let one of the two guards be
+// removed while this table stayed green.
+const REPOSITORY_SOURCE_FAILURES = [
+  [
+    'null',
+    (source) => {
+      source.repository.maintainer = null;
+    },
+    /repository\.maintainer must be a non-empty string/,
+  ],
+  [
+    'missing url',
+    (source) => {
+      delete source.repository.url;
+    },
+    /repository\.url is missing/,
+  ],
+];
+
+for (const [label, mutate, expected] of REPOSITORY_SOURCE_FAILURES) {
+  test(`a ${label} repository value fails the generator without rewriting either artifact`, (t) => {
+    const root = makeTempTree(t, mutate);
+
+    const sentinel = 'SENTINEL: written by the test, must survive a failed generation\n';
+    writeFileSync(join(root, REPOSITORY_YAML_REL), sentinel, 'utf8');
+    writeFileSync(join(root, CONFIG_YAML_REL), sentinel, 'utf8');
+
+    const result = runGenerator(root);
+
+    assert.notEqual(result.status, null, `generator process never started (${result.error?.message ?? 'unknown'})`);
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${outputOf(result)}`);
+
+    const output = outputOf(result);
+    assert.match(output, /^Failed: /m, output);
+    assert.match(output, expected, output);
+    assert.doesNotMatch(output, /TypeError/, output);
+
+    assert.equal(readFileSync(join(root, REPOSITORY_YAML_REL), 'utf8'), sentinel, 'repository.yaml was rewritten by a failed run');
+    assert.equal(readFileSync(join(root, CONFIG_YAML_REL), 'utf8'), sentinel, 'config.yaml was rewritten by a failed run');
+  });
+}
+
 // ---------------------------------------------------------------------------------------
 // T-01-19, renamed nested key: this used to flood stderr with
 // `TypeError: Cannot read properties of undefined (reading 'type')` plus stack frames that
