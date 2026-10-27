@@ -23,7 +23,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 Phase: 1 of 7 (App 元数据与仓库可识别性)
 Plan: 0 of TBD in current phase
 Status: Ready to plan
-Last activity: 2026-10-27 — ROADMAP.md 与 STATE.md 创建；38 条 v1 需求全部映射到 7 个阶段
+Last activity: 2026-10-27 — 路线图经用户批准（7 阶段 / 38 条 v1 需求全覆盖），项目初始化完成
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -56,6 +56,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Roadmap] 单条需求只映射到一个阶段；SEC-03 与 VER-01 归入 Phase 2（CI 与镜像门禁），其余 VER 归入 Phase 7
 - [Roadmap] Phase 5 的 Web UI 载体（Expo Web 导出 vs 最小静态页）有意留白，须在 Phase 5 讨论时决策并记录
 - [Roadmap] 需求总数由文档记录的 37 修正为实际清点的 38，Traceability 已按 38 条填满
+- [Approval] 2026-10-27 用户批准 7 阶段路线图与需求映射，Phase 1 可进入规划
 
 ### Pending Todos
 
