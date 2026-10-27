@@ -45,7 +45,10 @@
   3. `config.yaml` 中 `image`、`version`、`arch`、`ingress_port`、`homeassistant_api` 与 `/data` 相关字段值全部来自已落盘的显式决策；仓库内不存在未替换的 `<owner>` / `<repo>` / `<maintainer>` 占位符。
   4. App 用户在配置页可见至少「日志级别」与「HA URL 覆盖」两个选项，带 `options` + `schema` 类型与默认值（配置文件层面可校验）。
   5. 「在 HAOS 添加仓库并看到 HomeWeave 条目」被写入实机验证清单，并明确标注为 **HAOS 未验证**。
-**Plans**: TBD
+**Plans**: 1/3 plans executed
+- [x] 01-01-PLAN.md
+- [ ] 01-02-PLAN.md
+- [ ] 01-03-PLAN.md
 
 计划切片（供 plan-phase 细化，预期 4 plans）：
 - 现场核对官方 apps-example / 配置参考 / builder actions 的当前格式，输出差异备忘
@@ -189,7 +192,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. App 元数据与仓库可识别性 | 0/TBD | Not started | - |
+| 1. App 元数据与仓库可识别性 | 1/3 | In Progress | - |
 | 2. 镜像构建与发布链路 | 0/TBD | Not started | - |
 | 3. 运行时骨架 | 0/TBD | Not started | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
@@ -203,4 +206,3 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 - **Phase 5 的 Web UI 载体尚未决策**（`apps/mobile` Expo Web 导出 vs 本里程碑最小静态页），这是有意留白：该决策需要在 Phase 5 讨论时基于实际成本与 Ingress 技术要求作出并记录，路线图不预设结论。
 - **需求总数修正**：REQUIREMENTS.md 顶部写 37 条，逐条清点为 38 条（APP 4 + IMG 5 + RT 5 + DATA 4 + HA 4 + ING 4 + SEC 3 + DOC 6 + VER 3）。本路线图按 38 条全覆盖映射，并已在 Traceability 中修正计数。
 - **aarch64 与 HAOS 的诚实边界**：本路线图任何阶段的完成都不代表"已在真实 HAOS 上装过"。只有 Phase 7 的实机清单在真实设备上被勾选后，才能使用 HAOS 实机通过的措辞。
-
