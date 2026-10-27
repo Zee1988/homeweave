@@ -11,13 +11,13 @@ provides:
   - repository.yaml 三个必需键（name / url / maintainer）的无条件存在性守卫（V19）
   - repository.yaml 三键的值类型守卫（V19 独立循环，不再受 if (has(...)) 短路影响）
   - 生成器源侧 assertNonEmptyString() 值断言，null/数字/布尔在写盘前即被拒绝
-  - 基线由 81 checks / 53 例抬升至 87 checks / 64 例
+  - 基线由 81 checks / 53 例抬升至 87 checks / 66 例
 affects: [01-app 验证收口, Phase 7 HAOS 实机验收, 后续任何改动 app-metadata.json 的计划]
 
 actuals:
-  tokens: 4800
+  tokens: 5200
   tasks: 2
-  commits: 3
+  commits: 4
 
 tech-stack:
   added: []
@@ -89,7 +89,7 @@ status: complete
 
 # Phase 01: App 元数据与仓库可识别性 Summary（Plan 06）
 
-**为 repository.yaml 补上与 config.yaml 同构的逐键守卫：V19 无条件断言 name/url/maintainer 存在且类型正确，生成器侧前置 assertNonEmptyString，基线抬到 87 checks / 64 例**
+**为 repository.yaml 补上与 config.yaml 同构的逐键守卫：V19 无条件断言 name/url/maintainer 存在且类型正确，生成器侧前置 assertNonEmptyString，基线抬到 87 checks / 66 例**
 
 ## Performance
 
@@ -104,7 +104,7 @@ status: complete
 - HI-04 闭合：`repository.yaml` 从「只有 `name` 被 V3 抓到」变成三键逐键守卫。删除 `url`、删除 `maintainer`、`maintainer: 42`、`maintainer: null`、`url: true` 五种篡改全部退出码 1 并被 V19 点名，与 verifier 报告中「四种篡改 exit 0」的证词逐条对应反转。
 - 守卫结构上与 config 侧 `V2`/`V16` 完全同构：存在性断言无条件执行，类型检查在独立循环中。这正面消除 HI-04 的根因 —— `if (has(...))` 在键缺失时静默短路。
 - 源侧新增 `assertNonEmptyString()`，且先于任何 `scalar()` 强制转换调用，`null` 与数字不再有机会被字符串化成看似合法的值再写盘。
-- 基线净增无弱化：`validate:app` 81 → 87 checks，`test:app` 53 → 64 例（`# pass 64` / `# fail 0` / `# skipped 0` / `# todo 0`），`check:app` 零漂移。
+- 基线净增无弱化：`validate:app` 81 → 87 checks，`test:app` 53 → 66 例（`# pass 66` / `# fail 0` / `# skipped 0` / `# todo 0`），`check:app` 零漂移。计划门槛「不小于 64」在追加评审修复后仍成立。
 
 ## Task Commits
 
@@ -113,6 +113,7 @@ Each task was committed atomically:
 1. **Task 1: 双侧值守卫（校验器 V19 + 生成器 assertNonEmptyString）** - `66ec59b` (feat)
 2. **Task 2: V19 负例矩阵与源侧负例补齐** - `1b0746c` (test)
 3. **Task 2 后续修复：CRLF 用例与检出状态解耦** - `b71f7f7` (test)
+4. **第三轮代码评审 R3-01/R3-02：name/url 断言钉死 + V19 注释订正** - `f5333bb` (test)
 
 **Plan metadata:** 本 SUMMARY 单独提交（docs）
 
@@ -126,7 +127,7 @@ Each task was committed atomically:
 ## Decisions Made
 
 - 接受 `name` 缺失时 `V3` 与 `V19` 双报。代价是多一条报文，收益是保住与 config 侧的同构性，且不减少既有检查数。
-- `✓ 87 checks passed` 与 `# tests 64` 作为等值硬断言写进计划 gate：任何后续顺手加严都会立刻变红，逼迫更新计划而不是悄悄漂移。
+- `✓ 87 checks passed` 作为等值硬断言、`# tests` 作为「不小于 64」的下界写进计划 gate：前者任何顺手加严都会立刻变红，后者允许评审修复追加用例而不需要回改计划。
 - 源侧 `delete repository.url` 与产物侧同名负例的消息正则不同，因为前者先被 `assertConsumedKeys` 拦截。这不是覆盖漏洞，两条路径各自都有断言。
 
 ## Deviations from Plan
@@ -143,8 +144,23 @@ Each task was committed atomically:
 
 ---
 
-**Total deviations:** 1 auto-fixed (1 bug)
-**Impact on plan:** 修复的是计划内测试的健壮性缺陷，未触及校验器或生成器语义，检查数/用例数仍精确落在 87 / 64。无范围蔓延。
+**Total deviations:** 3 auto-fixed (1 bug, 1 test-coverage gap, 1 doc inaccuracy)
+
+**2. [Rule 1 - Bug] 生成器侧 name/url 断言零行为覆盖（代码评审 R3-01，MEDIUM）**
+- **Found during:** 第三轮代码评审（post-execution hook）
+- **Issue:** `assertNonEmptyString('repository.name', …)` / `('repository.url', …)` 两行若被整行删除，`test:app` 仍 66/66 全绿——只有 `maintainer` 那行有对应用例。这与测试文件自己立的标准（`generate-app-metadata.test.mjs:283-287` 注释）直接冲突：守卫可被删除而表仍绿。
+- **Fix:** 在 `REPOSITORY_SOURCE_FAILURES` 表追加 `empty name` / `empty url` 两条，断言的是值级消息 `must be a non-empty string`，而非存在级消息 `is missing`。
+- **Verification:** 变异验证——注释掉 `assertNonEmptyString('repository.name', …)` 后 `# tests 66 / # pass 65 / # fail 1`，且失败点名 `a empty name repository value fails the generator…`；还原后 66/66/0。
+- **Committed in:** `f5333bb`
+
+**3. [Rule 1 - Bug] V19 注释两处表述可证伪（代码评审 R3-02，LOW）**
+- **Found during:** 第三轮代码评审
+- **Issue:** 注释称「check 总数与缺失哪个键无关」，实际 87 / 85 / 83 随缺失键数变化；又称「V3 在本块下方」，实际 V3 在 178-187，位于上方。
+- **Fix:** 改为「三个键都在时 87，缺一个 85，缺两个 83，只有全在的数值被断言」，并把 `below` 改成 `above`。
+- **Files modified:** `scripts/validate-app-metadata.mjs`
+- **Committed in:** `f5333bb`
+
+**Impact on plan:** 三项修复都是「让守卫与它的测试互相钉死」，未改变任何被校验的业务语义；检查数仍 87，用例数 64 → 66（计划门槛是「不小于 64」，仍成立）。无范围蔓延。
 
 ## Issues Encountered
 
@@ -168,7 +184,7 @@ Each task was committed atomically:
 | 命令 | 结果 |
 |---|---|
 | `corepack pnpm validate:app` | `✓ 87 checks passed`，exit 0，无 `✗` |
-| `corepack pnpm test:app` | `# tests 64 / # pass 64 / # fail 0 / # skipped 0 / # todo 0`，exit 0 |
+| `corepack pnpm test:app` | `# tests 66 / # pass 66 / # fail 0 / # skipped 0 / # todo 0`，exit 0 |
 | `corepack pnpm check:app` | exit 0，无 `Out of date` |
 | `git status --porcelain`（源码侧） | 干净 |
 
@@ -180,6 +196,7 @@ None - no external service configuration required.
 
 - HI-04 静态层已闭合，Phase 01 的 20 条 truth 在静态维度上全部有守卫。
 - **HAOS 实机验收仍未验证**（D4）：Supervisor 是否接受本仓库、商店是否渲染 app、镜像能否 pull/upgrade、ingress 是否可访问，全部归 Phase 7。任何「已可在 HAOS 安装」的表述在此前都不成立。
+- **R3-03 未修（LOW，故意延后）**：`url: "not-a-url"` 仍是 `✓ 87 checks passed`。它与 HI-04 属同类（坏值静态全绿），但不在本计划的 T-01-22 范围内；config 侧的 `documentation` / `issue_tracker` 等 URL 字段同样没有形状校验，属既有对称缺口。建议作为独立计划统一处理 URL 形状（需要先决定是否引入 URL 解析依赖，以及是否允许 `http://` 内网地址），不要在本计划里零散加。
 - 后续若改动 `app-metadata.json` 的结构，`REPOSITORY_ALLOWED_KEYS` / `CONFIG_ALLOWED_KEYS` 两张表与派生的 REQUIRED 表必须同步，否则 `check:app` 或 V19 会立刻变红 —— 这是有意的 fail-closed 设计。
 
 ---
