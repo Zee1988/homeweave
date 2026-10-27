@@ -173,8 +173,35 @@ function assertStringList(keyPath, value) {
   }
 }
 
+/**
+ * Assert `value` is a string with something in it.
+ *
+ * This exists because `scalar()` is deliberately permissive: a number or a boolean is emitted
+ * verbatim, so `repository.maintainer: 42` produces `maintainer: 42` -- valid YAML, exit 0,
+ * and an artifact that only fails on the Supervisor side, where the whole repository then
+ * fails to load and no app appears at all. Same discipline as assertObject / assertStringList:
+ * stop on the source, before anything is written.
+ *
+ * The label is computed explicitly instead of using `typeof value` directly because typeof is
+ * misleading for three inputs: `typeof null === 'object'` (so `maintainer: null` would report
+ * `got object`), an array reports `object`, and `undefined` reports `undefined` in a message
+ * that then reads like a typo in the message rather than a missing key.
+ */
+function assertNonEmptyString(keyPath, value) {
+  if (typeof value === 'string' && value.trim() !== '') return;
+  const label = value === null ? 'null' : Array.isArray(value) ? 'array' : value === undefined ? 'undefined' : typeof value;
+  throw new Error(`${keyPath} must be a non-empty string; got ${label}`);
+}
+
 function buildRepositoryYaml(repository) {
   assertObject('repository', repository);
+  // Value guards run BEFORE scalar(): scalar() stringifies 42 / true without complaint, so an
+  // assertion placed after it would be looking at an already-plausible string. repository.yaml
+  // is the whole-repository manifest -- one bad value here makes Supervisor reject the entire
+  // repository, not just this app.
+  assertNonEmptyString('repository.name', repository.name);
+  assertNonEmptyString('repository.url', repository.url);
+  assertNonEmptyString('repository.maintainer', repository.maintainer);
   // Key order is part of the contract: name -> url -> maintainer.
   return [`name: ${scalar(repository.name)}`, `url: ${scalar(repository.url)}`, `maintainer: ${scalar(repository.maintainer)}`];
 }

@@ -244,6 +244,39 @@ test('an unconsumed source key fails the generator without rewriting either arti
 });
 
 // ---------------------------------------------------------------------------------------
+// T-01-23, source-side value guard on repository.yaml: a numeric maintainer used to sail
+// straight through. `scalar(42)` emits `maintainer: 42`, which is valid YAML, so the generator
+// exited 0 and only the Supervisor side would have complained -- the failure mode this whole
+// guard exists to prevent, and one that `--check` cannot see either because the artifact it
+// compares against was rebuilt from the same bad source.
+// ---------------------------------------------------------------------------------------
+test('a numeric repository.maintainer fails the generator without rewriting either artifact', (t) => {
+  const root = makeTempTree(t, (source) => {
+    source.repository.maintainer = 42;
+  });
+
+  const sentinel = 'SENTINEL: written by the test, must survive a failed generation\n';
+  writeFileSync(join(root, REPOSITORY_YAML_REL), sentinel, 'utf8');
+  writeFileSync(join(root, CONFIG_YAML_REL), sentinel, 'utf8');
+
+  const result = runGenerator(root);
+
+  assert.notEqual(result.status, null, `generator process never started (${result.error?.message ?? 'unknown'})`);
+  assert.equal(result.status, 1, `expected exit 1, got ${result.status}\n${outputOf(result)}`);
+
+  const output = outputOf(result);
+  assert.match(output, /^Failed: /m, output);
+  // Naming the key is what separates "stopped on the right assertion" from "stopped somewhere
+  // else in the source and happened to exit 1".
+  assert.match(output, /repository\.maintainer must be a non-empty string/, output);
+  // A raw TypeError would mean the value guard is missing and something downstream crashed.
+  assert.doesNotMatch(output, /TypeError/, output);
+
+  assert.equal(readFileSync(join(root, REPOSITORY_YAML_REL), 'utf8'), sentinel, 'repository.yaml was rewritten by a failed run');
+  assert.equal(readFileSync(join(root, CONFIG_YAML_REL), 'utf8'), sentinel, 'config.yaml was rewritten by a failed run');
+});
+
+// ---------------------------------------------------------------------------------------
 // T-01-19, renamed nested key: this used to flood stderr with
 // `TypeError: Cannot read properties of undefined (reading 'type')` plus stack frames that
 // point at internal functions. It must become a readable `Failed:` message naming the key

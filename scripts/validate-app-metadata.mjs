@@ -61,6 +61,15 @@ const CONFIG_REQUIRED_KEYS = [...CONFIG_ALLOWED_KEYS];
 
 const REPOSITORY_ALLOWED_KEYS = new Set(['name', 'url', 'maintainer']);
 
+// The REQUIRED key set for repository.yaml, derived from the whitelist above -- exactly the same
+// technique as CONFIG_REQUIRED_KEYS, and for the same reason: a second hand-maintained array is
+// how a key ends up allowed by V8 yet required by nobody, a gap between the two sets that no
+// check owns. Today repository.yaml must carry all three keys it is allowed to carry.
+//
+// Deriving from a Set also fixes the iteration order (insertion order: name -> url -> maintainer),
+// so the V19 failure list is stable across runs and matches the artifact's key order.
+const REPOSITORY_REQUIRED_KEYS = [...REPOSITORY_ALLOWED_KEYS];
+
 // Supervisor's ARCH_ALL is broader; we ship a strictly narrower subset on purpose so a
 // multi-arch build is never declared before it actually exists.
 const SUPPORTED_ARCH = ['amd64', 'aarch64'];
@@ -175,6 +184,52 @@ if (repository) {
     REPOSITORY_FILE,
     `"name" must be a non-empty string, got ${describe(name)}`,
   );
+}
+
+// V19: repository.yaml gets the same per-key presence + type treatment as config.yaml.
+//
+// This is the sibling guard of V2 (presence) and V16 (type), deliberately identical in shape.
+// It closes the gap those two left open: the two artifacts are generated side by side, but only
+// config.yaml was guarded per key, so `maintainer: 42`, `maintainer: null`, `url: true` and a
+// deleted "url" / "maintainer" line all passed with exit 0. repository.yaml is the
+// WHOLE-REPOSITORY manifest: one bad value here does not degrade one app, it makes Supervisor
+// reject the repository, so no app appears at all. That makes a value guard here at least as
+// load-bearing as V2.
+//
+// Two separate loops, on purpose:
+//
+//   1. presence is asserted unconditionally -- wrapping it in `if (has(repository, key))` is
+//      exactly the shape that silently skips the check when the key is absent, which is the
+//      hole this code exists to close;
+//   2. the type loop carries `if (!has(...)) continue` so that ONE missing key produces ONE
+//      failure (from loop 1), not two. It does not weaken presence enforcement, and it keeps
+//      the total check count from depending on which key happens to be missing.
+//
+// V3 stays untouched below this block, so a missing or non-string "name" reports BOTH V3 and
+// V19. That double report is accepted deliberately: this validator collects failures and only
+// forbids under-reporting, and deleting V3 to silence the overlap would reduce the check count.
+if (repository) {
+  for (const key of REPOSITORY_REQUIRED_KEYS) {
+    check(
+      has(repository, key),
+      'V19',
+      REPOSITORY_FILE,
+      `missing required key "${key}" -- repository.yaml is the whole-repository manifest, so one bad key makes Supervisor fail to load the entire repository and no app appears at all`,
+    );
+  }
+}
+
+if (repository) {
+  for (const key of REPOSITORY_REQUIRED_KEYS) {
+    if (!has(repository, key)) continue;
+    const value = repository[key];
+    check(
+      typeof value === 'string' && value.trim() !== '',
+      'V19',
+      REPOSITORY_FILE,
+      `"${key}" must parse as a non-empty string, got ${describe(value)}`,
+    );
+  }
 }
 
 // V4: "version" has to survive YAML parsing as a string in x.y.z shape. An unquoted 1.10

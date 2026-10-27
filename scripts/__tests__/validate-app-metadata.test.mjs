@@ -393,6 +393,31 @@ test('V17: a different homeassistant minimum is rejected', (t) => {
 });
 
 // ---------------------------------------------------------------------------------------
+// V19 -- the repository.yaml sibling of V2 / V16.
+// Before this, repository.yaml had exactly one value guard: V3 on "name". Everything else was
+// unguarded, so `maintainer: 42`, `maintainer: null`, `url: true` and a deleted "url" or
+// "maintainer" line all validated clean. That matters more than a normal gap: repository.yaml is
+// the whole-repository manifest, so one bad value makes Supervisor reject the entire repository
+// and no app appears at all.
+// ---------------------------------------------------------------------------------------
+test('V19: a numeric maintainer is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+  writeRepository(root, (repository) => {
+    repository.maintainer = 42;
+  });
+
+  const result = runValidator(root);
+
+  assertDetects(result, 'V19', 'maintainer=42');
+  // Both extra assertions are load-bearing. Asserting only the code would let a failure reported
+  // against "name" pass as a detection of "maintainer", and only the type word proves the type
+  // loop (not the presence loop) is the one that fired.
+  assert.match(result.stdout, /"maintainer"/, `maintainer not named in the failure\n${result.stdout}`);
+  assert.match(result.stdout, /got number/, `the type branch did not fire\n${result.stdout}`);
+});
+
+// ---------------------------------------------------------------------------------------
 // V18 / the V8 complement -- the two halves of D-07 ("ports stays commented until Phase 5").
 //
 // Deleting a comment cannot be expressed as an object-level mutation, so this case rewrites the
