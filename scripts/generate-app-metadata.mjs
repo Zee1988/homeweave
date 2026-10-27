@@ -19,7 +19,7 @@
 // - no timestamps, commit hashes, or random values: same input -> identical bytes
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -38,10 +38,50 @@ const PORTS_DEFERRAL_NOTE =
 
 const LINE_END = '\n';
 
+// `--check` turns this script into a read-only drift guard (see package.json `check:app`).
+// It builds the artifacts in memory exactly as a real run would, compares them byte for
+// byte against what is on disk, and never writes. The point is that "the source changed and
+// nobody regenerated" stops being a silent, all-green state: the artifacts are what
+// Supervisor reads, so a stale one ships a stale version to Phase 2's image tag.
+const CHECK_ONLY = process.argv.includes('--check');
+
+// Populated only in CHECK_ONLY runs, printed as one collected summary at the end (the same
+// collect-then-report style the validator uses; fail-fast would hide the second stale file).
+const outOfDate = [];
+
 function fail(path, error) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Failed: ${path}: ${message}`);
   process.exit(1);
+}
+
+/** Repo-relative path with forward slashes, so win32 backslashes never leak into messages. */
+function relativeToRepo(path) {
+  return relative(REPO_ROOT, path).split(sep).join('/');
+}
+
+/** Truncate a line for the drift message: full diffs are noise and pollute test assertions. */
+function describeLine(value) {
+  if (value === undefined) return '<end of file>';
+  const text = JSON.stringify(value);
+  return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+}
+
+/**
+ * Describe where the on-disk bytes first diverge from the freshly built ones.
+ * Only the first differing line is reported -- enough to locate the drift, not so much
+ * that the message becomes an unreadable diff.
+ */
+function describeDrift(expected, actual) {
+  if (actual === null) return 'artifact is missing';
+  const expectedLines = expected.split(LINE_END);
+  const actualLines = actual.split(LINE_END);
+  const lineCount = Math.max(expectedLines.length, actualLines.length);
+  for (let index = 0; index < lineCount; index += 1) {
+    if (expectedLines[index] === actualLines[index]) continue;
+    return `first difference at line ${index + 1}: expected ${describeLine(expectedLines[index])}, found ${describeLine(actualLines[index])}`;
+  }
+  return 'content differs only in bytes after the last newline';
 }
 
 function readSource() {
@@ -142,10 +182,30 @@ function buildConfigYaml(app) {
   return lines;
 }
 
+// Dual-mode writer. In normal mode it is the only place artifacts are written; in CHECK_ONLY
+// mode it is the only place drift is *detected*, and it is deliberately incapable of writing
+// (no mkdirSync, no writeFileSync on that branch) so `--check` cannot "fix" what it found.
 function writeLines(path, lines) {
+  const next = lines.join(LINE_END) + LINE_END;
+
+  if (CHECK_ONLY) {
+    let current = null;
+    try {
+      current = readFileSync(path, 'utf8');
+    } catch {
+      // A missing artifact is drift, not a pass: it is exactly the state a fresh clone that
+      // never ran the generator is in, and Supervisor would find no app at all.
+      current = null;
+    }
+    if (current !== next) {
+      outOfDate.push(`Out of date: ${relativeToRepo(path)} (run \`corepack pnpm generate:app\`) - ${describeDrift(next, current)}`);
+    }
+    return;
+  }
+
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, lines.join(LINE_END) + LINE_END, 'utf8');
+    writeFileSync(path, next, 'utf8');
   } catch (error) {
     fail(path, error);
   }
@@ -170,6 +230,13 @@ function main() {
 
   writeLines(REPOSITORY_YAML_PATH, buildRepositoryYaml(metadata.repository));
   writeLines(CONFIG_YAML_PATH, buildConfigYaml(metadata.app));
+
+  // Collect-then-report: every stale artifact is named before the process exits non-zero.
+  if (CHECK_ONLY && outOfDate.length > 0) {
+    for (const message of outOfDate) console.error(message);
+    console.error(`${outOfDate.length} artifact(s) out of date`);
+    process.exitCode = 1;
+  }
 }
 
 main();
