@@ -35,6 +35,8 @@ EXPO_ACCESS_TOKEN=
 
 环境变量名称以实际实现为准；新增变量必须同步更新本文档和 `.env.example`。生产启动检查必需变量；占位值不可用于生产；`.env` 不得提交。`ALLOW_INSECURE_LOCAL_HTTP` 不能绕过 SSRF 地址策略。
 
+`DATABASE_URL` 的取值随部署形态变化，不要混淆：本机开发用相对的 `file:./data/app.db`（`data/` 已 gitignore）；一次性校验库用 `file:.tmp/dev.db`；Home Assistant OS App 容器内必须用持久卷上的绝对路径 `file:/data/homeweave.db`（见 `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md`）。Prisma 7 起连接串不写在 `schema.prisma`，而由 `apps/api/prisma.config.ts` 读取该变量。
+
 ## 客户端公开配置
 
 - 服务器 URL 应通过用户连接流程保存；不应假设一个统一的部署 URL。

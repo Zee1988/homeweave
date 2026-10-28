@@ -14,10 +14,18 @@ data/
 *.db-journal
 *.db-wal
 
+# Throwaway local DBs used by verification commands (02-02)
+.tmp/
+
 # Secrets / local env
 .env
 .env.*
 !.env.example
+# Per-package env files are matched by `.env` too; kept explicit for readers.
+apps/api/.env
+
+# Prisma Client output (Prisma 7 `prisma-client` generator, derived from schema)
+apps/api/src/generated/
 
 # OS / editor
 .DS_Store
