@@ -13,8 +13,8 @@
 
 ```dotenv
 NODE_ENV=development
-APP_PORT=8500
-APP_BASE_URL=http://localhost:8500
+PORT=8099
+APP_BASE_URL=http://localhost:8099
 SESSION_SECRET=replace-with-long-random-secret
 APP_ENCRYPTION_KEY=replace-with-supported-key-format
 DATABASE_URL=file:./data/app.db
