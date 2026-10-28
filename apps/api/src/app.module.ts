@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common';
 
 import type { LogLevel } from './config/log-level';
 import { HealthModule } from './health/health.module';
 import { PinoLoggerService } from './logging/pino-logger.service';
+import { RequestIdMiddleware } from './logging/request-id.middleware';
 import { PrismaModule } from './prisma/prisma.module';
 
 // The log level is resolved exactly once, by `loadAppConfig()` in main.ts, and handed
@@ -30,4 +31,13 @@ export function setAppLogLevel(level: LogLevel): void {
   ],
   exports: [PinoLoggerService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  /**
+   * Applied to every route (`'*'`) and registered first, so nothing downstream — another
+   * middleware, a guard, a handler, an exception filter — can log a line that lacks the
+   * `requestId` the response advertises in `x-request-id`.
+   */
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(RequestIdMiddleware).forRoutes('*');
+  }
+}
