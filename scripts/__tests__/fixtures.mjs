@@ -46,6 +46,10 @@ export const VALID_CONFIG = {
   homeassistant_api: true,
   ingress: true,
   ingress_port: 8099,
+  // Byte-identical to the string generate-app-metadata.mjs emits for app.watchdog (03-02).
+  // This baseline is a mirror of homeweave_app/config.yaml, so a drift here means the fixture
+  // stopped being a legal input and every negative case in this directory degenerates.
+  watchdog: 'http://[HOST]:[PORT:8099]/health/live',
   options: { log_level: 'info', ha_url: '' },
   schema: { log_level: 'list(info|debug|warn)', ha_url: 'str?' },
 };

@@ -211,14 +211,19 @@ test('--check still fails on an unreadable source instead of reporting zero drif
 });
 
 // ---------------------------------------------------------------------------------------
-// T-01-19, fail-closed on the source: an unconsumed key. `app.watchdog = true` used to be
-// silently dropped (exit 0, no watchdog in the artifact), which quietly breaks the promise
-// that "the generator ran clean" means "the source was applied". It must now stop the run,
-// and above all it must stop it BEFORE anything is rewritten.
+// T-01-19, fail-closed on the source: an unconsumed key. An unknown key used to be silently
+// dropped (exit 0, nothing in the artifact), which quietly breaks the promise that "the
+// generator ran clean" means "the source was applied". It must now stop the run, and above all
+// it must stop it BEFORE anything is rewritten.
+//
+// The counter-example is `watchdogUrl`, NOT `watchdog`. `watchdog` became a consumed key in
+// 03-02, so using it here would have kept this test green while proving nothing: the generator
+// would exit 1 only for whatever other reason, and the assertion below would pass on a key that
+// is in fact perfectly legal. The key has to be one the generator genuinely never reads.
 // ---------------------------------------------------------------------------------------
 test('an unconsumed source key fails the generator without rewriting either artifact', (t) => {
   const root = makeTempTree(t, (source) => {
-    source.app.watchdog = true;
+    source.app.watchdogUrl = 'http://[HOST]:[PORT:8099]/health/live';
   });
 
   // Sentinel contents: if the generator writes at all, these change. This is how "no artifact
@@ -236,7 +241,7 @@ test('an unconsumed source key fails the generator without rewriting either arti
   // A formatted `Failed:` line, not a stack trace.
   assert.match(output, /^Failed: /m, output);
   // The message must name the offending source key, or the author cannot act on it.
-  assert.match(output, /app\.watchdog is not consumed/, output);
+  assert.match(output, /app\.watchdogUrl is not consumed/, output);
   assert.doesNotMatch(output, /TypeError/, output);
 
   assert.equal(readFileSync(join(root, REPOSITORY_YAML_REL), 'utf8'), sentinel, 'repository.yaml was rewritten by a failed run');
