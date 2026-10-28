@@ -49,6 +49,9 @@
 | `docs/18_INITIAL_PROMPT_CLAUDE_CODE_CODEX.md` | 可直接复制给 Claude Code / Codex 的初始开发 Prompt |
 | `docs/19_CODEBUDDY_WORKFLOW.md` | CodeBuddy 规则加载、工作流和推荐斜杠命令 |
 | `docs/20_INITIAL_PROMPT_CODEBUDDY.md` | CodeBuddy 初始 Prompt 与 Phase 1 Prompt |
+| `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` | HA App 部署、Supervisor 安装与镜像引用 |
+| `docs/22_INITIAL_PROMPT_HA_APP_CODEBUDDY.md` | HA App 专项 Prompt |
+| `docs/23_IMAGE_RELEASE_RUNBOOK.md` | 镜像发布手册：顺序强制、GHCR 可见性、resume 例外、回滚与失败判读 |
 | `docs/openapi.yaml` | API 契约起始文件 |
 | `docs/agent-checklist.json` | 可供自动化和 coding agent 使用的验收清单 |
 
