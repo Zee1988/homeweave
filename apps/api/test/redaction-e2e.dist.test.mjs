@@ -199,7 +199,10 @@ test('the response carries a uuid x-request-id and its log line carries the same
 
   // The startup record was written outside any request scope, which is the other half of
   // the same claim: the context is per-request, not process-global.
-  const startup = logRecords().find((record) => record.msg === undefined && record.port !== undefined);
+  // Selected by `event`, not by "a record without msg": 03-05 gave the startup record a
+  // message (`msg`) and a name (`startup_ok`), so the old object-only selector would match
+  // nothing and the test would fail for a reason unrelated to request scoping.
+  const startup = logRecords().find((record) => record.event === 'startup_ok');
   assert.ok(startup !== undefined, `the startup record is missing\n${describeChild()}`);
   assert.equal('requestId' in startup, false, 'the startup record leaked a requestId');
 });

@@ -1,4 +1,5 @@
 import { databasePathFromUrl, resolveDatabaseUrl } from './database-url';
+import { ConfigError } from './errors';
 import {
   FALLBACK_LOG_LEVEL,
   resolveLogLevel,
@@ -22,15 +23,12 @@ export const MIN_PORT = 1;
 export const MAX_PORT = 65535;
 
 /**
- * A configuration problem the operator can fix (bad PORT value, missing directory).
- * 03-05 maps this class to exit code 78 (EX_CONFIG); everything else stays 1.
+ * Re-exported from `./errors`, which owns the exit-code mapping. Kept exported here so
+ * every existing `ConfigError` import keeps working; the class itself must not be
+ * declared twice — a second definition would pass `instanceof` for one throw site and
+ * fail it for the other, and the exit code would silently become 1.
  */
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConfigError';
-  }
-}
+export { ConfigError };
 
 export interface AppConfig {
   port: number;
@@ -53,6 +51,7 @@ export function resolvePort(env: NodeJS.ProcessEnv = process.env): number {
   const port = Number(raw);
   if (!Number.isInteger(port) || port < MIN_PORT || port > MAX_PORT) {
     throw new ConfigError(
+      'invalid_port',
       `PORT must be an integer between ${MIN_PORT} and ${MAX_PORT}, received ${JSON.stringify(raw)}`,
     );
   }
