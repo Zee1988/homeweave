@@ -24,7 +24,7 @@
 
 ### 运行时服务（RT）
 
-- [ ] **RT-01**: `GET /health/live` 无需认证即可返回进程存活状态，且不泄露内部细节
+- [x] **RT-01**: `GET /health/live` 无需认证即可返回进程存活状态，且不泄露内部细节
 - [ ] **RT-02**: `GET /health/ready` 校验数据库可读写与迁移版本，未就绪时返回非 2xx 并说明原因
 - [ ] **RT-03**: 进程收到 `SIGTERM` / `SIGINT` 时优雅关闭：停止接收新请求、关闭连接与 Prisma、在限定时间内退出
 - [ ] **RT-04**: 日志为结构化格式，且 HA token、API Key、`Authorization` 头等敏感字段被脱敏
@@ -125,7 +125,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | IMG-03 | Phase 2 | Pending |
 | IMG-04 | Phase 2 | Pending |
 | IMG-05 | Phase 2 | Pending |
-| RT-01 | Phase 3 | Pending |
+| RT-01 | Phase 3 | Complete |
 | RT-02 | Phase 3 | Pending |
 | RT-03 | Phase 3 | Pending |
 | RT-04 | Phase 3 | Pending |

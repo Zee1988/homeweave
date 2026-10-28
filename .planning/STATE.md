@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 03
 current_phase_name: 运行时骨架
 status: executing
-stopped_at: Phase 3 plans written (5 plans / 3 waves)
-last_updated: "2026-10-28T03:45:42.055Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-10-28T03:55:24.044Z"
 last_activity: 2026-10-28
 last_activity_desc: Phase 03 execution started
-state_head: 692f2afc5d2156beabf1a6018808c356bd6ad572
+state_head: "0b3897d8d54d53d6875621bb944870bc44f6339c"
 progress:
   total_phases: 7
   completed_phases: 2
   total_plans: 15
-  completed_plans: 11
+  completed_plans: 12
 ---
 
 # Project State
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 ## Current Position
 
 Phase: 03 (运行时骨架) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-10-28 — Phase 03 execution started
 
@@ -65,6 +65,7 @@ Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 10/15 plan
 | Phase 02 P02 | ~60 min | 6 tasks | 12 files |
 | Phase 02 P03 | ~50 min | 5 tasks | 10 files |
 | Phase 02 P04 | ~150 min | 7 tasks | 11 files |
+| Phase 03-runtime P02 | ~25min continuation | 4 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,7 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 03]: **D-06 显式偏差**：migrations 只作为 `/health/ready` 的 `checks.migrations` 诊断字段，不参与状态码 → RT-02 为部分交付，在补齐前禁止宣称 SC-2 完整覆盖
 - [Phase 03]: 退出码语义固定为：配置/参数错误 **78**（EX_CONFIG），其他启动失败 **1**，正常信号关闭 **0**；这些是 Supervisor 唯一可读信号
 - [Phase 03]: 关闭预算 8s 小于 `docker stop` 的 10s SIGKILL 窗口；用 `enableShutdownHooks(Object.values(ShutdownSignal), { useProcessExit: true })`，不手写 `process.on('SIGTERM')`
+- [Phase 03-runtime]: watchdog emitted immediately after ingress_port, before options/schema — only slot that preserves the 01-PATTERNS key order while keeping it adjacent to the port it probes
 
 ### Pending Todos
 
@@ -140,9 +142,9 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28
-Stopped at: Phase 3 plans written (5 plans / 3 waves)
-Resume file: .planning/phases/03-runtime/03-01-PLAN.md
+Last session: 2026-10-28T03:55:23.823Z
+Stopped at: Completed 03-02-PLAN.md
+Resume file: None
 
 **Next action:** `/gsd-execute-phase 3`（wave 1：03-01 与 03-02 并行）。
 

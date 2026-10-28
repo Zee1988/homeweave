@@ -102,10 +102,10 @@
   3. 发送 `SIGTERM` 后进程在限定时间内自行退出：日志显示停止接收新请求并关闭连接与 Prisma，无被强制 SIGKILL 的记录。
   4. 走过一条带 `Authorization` 头与 token 的请求后，结构化日志中该字段已被脱敏为掩码，且每条日志都带可用于串联的 requestId。
   5. `DATABASE_URL` 指向不可写目录时进程 fail-fast 退出并给出明确错误，而不是带着半可用状态继续服务。
-**Plans**: 1/5 plans executed（3 waves）
+**Plans**: 2/5 plans executed（3 waves）
 
 - [x] 03-01-PLAN.md — tracer 切片：依赖、配置解析、Prisma adapter 与 `/health/live`（wave 1，RT-01）
-- [ ] 03-02-PLAN.md — 探针语义收窄与 watchdog 生成链（wave 1，RT-01）
+- [x] 03-02-PLAN.md — 探针语义收窄与 watchdog 生成链（wave 1，RT-01）
 - [ ] 03-03-PLAN.md — 日志脱敏、requestId 串联与脱敏 E2E（wave 2，RT-04）
 - [ ] 03-04-PLAN.md — `/health/ready` 的数据库/迁移/磁盘检查（wave 2，RT-02 部分交付）
 - [ ] 03-05-PLAN.md — 启动 fail-fast、优雅关闭与镜像断言 8→9（wave 3，RT-03、RT-05）
@@ -212,7 +212,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. App 元数据与仓库可识别性 | 6/6 | Complete（静态自证，HAOS 实机未验证） | - |
 | 2. 镜像构建与发布链路 | 4/4 | Complete（run 40614562404 全绿） | - |
-| 3. 运行时骨架 | 1/5 | In Progress | - |
+| 3. 运行时骨架 | 2/5 | In Progress | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
 | 5. Ingress Web UI 与认证边界 | 0/TBD | Not started | - |
 | 6. Home Assistant 连接与自检 | 0/TBD | Not started | - |
