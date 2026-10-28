@@ -195,11 +195,43 @@ _7 plan commits measured with `git rev-list --count 16e26bc..HEAD` before the me
 - The plan's Task 1 asked for `"test": "node --experimental-strip-types --test \"test/**/*.test.ts\" && node --test \"test/**/*.dist.test.mjs\""`. The committed script (`faab0f6`) stops after the `.ts` branch. Task 1's own `<acceptance>` only checks for `--experimental-strip-types`, so it passed.
 - **Consequence:** root `corepack pnpm test` does not run the new dist test; it must be invoked directly (`node --test "apps/api/test/health-live.dist.test.mjs"`), which is exactly what Task 5's `<automated>` does.
 - **Not fixed** because this continuation's scope was strictly tasks 4–5 and "touch no other file". Whoever owns the next plan touching `apps/api/package.json` should append the second branch now that the file exists.
+- **Resolved by the orchestrator after the plan closed** — see Deviation 6.
+
+### 5. Two `better-sqlite3` copies were installed (found on close-out, resolved)
+
+`@prisma/adapter-better-sqlite3@7.10.1` declares `better-sqlite3` as a **direct dependency** (`^12.6.0`), not a peer. So the adapter loaded `12.11.1` and ignored the `^13.0.3` this plan declared; two native modules ended up in the tree.
+
+The two versions get their binary in completely different ways, which inverts the assumption 03-RESEARCH §3 recorded:
+
+| | v12.11.1 | v13.0.3 |
+|---|---|---|
+| install script | `prebuild-install \|\| node-gyp rebuild` | *(none)* |
+| binary origin | downloaded per-platform at install time, **node-gyp fallback needs a C++ toolchain** | bundled N-API prebuilds in the package: `linux-x64`, `linux-arm64`, `linuxmusl-x64/arm64`, `darwin-*`, `win32-*` |
+
+So the *unused* version was the one with prebuilds, and the *loaded* version was the one that can fall back to compiling. Fixed with a workspace-wide override in root `package.json`:
+
+```json
+"pnpm": { "overrides": { "better-sqlite3": "^13.0.3" } }
+```
+
+Verified by reinstall + rebuild + black-box boot: lockfile now resolves a single `better-sqlite3@13.0.3`, the adapter's own link points at `13.0.3`, `pnpm --filter @homeweave/api build` exits 0, and `health-live.dist.test.mjs` passes against it (`# pass 1 / # fail 0`). The adapter's use of the v12 API (`new Database(path)`, `prepare`, `pragma`) is unchanged in v13, and the boot test is the evidence that it still works end to end.
+
+**Consequence for 03-02:** the prebuild assertion must check `node_modules/better-sqlite3/prebuilds/linux-<arch>.node` on the **hoisted 13.0.3** copy, and must fail the build if that file is missing — a `prebuild-install` download path no longer exists in the tree.
+
+### 6. `test` script second branch appended (Deviation 4 closed)
+
+`apps/api/package.json` now reads:
+
+```
+node --experimental-strip-types --test "test/**/*.test.ts" && node --test "test/**/*.dist.test.mjs"
+```
+
+`corepack pnpm --filter @homeweave/api test` runs both branches: the 14 `.ts` unit assertions, then the dist black-box test (`# pass 1 / # fail 0`). Root `corepack pnpm test` therefore covers `/health/live` from now on.
 
 ---
 
-**Total deviations:** 4 (1 config-level Rule 3, 1 blocking Rule 3, 1 Rule 1 assertion correction, 1 documented gap left open on purpose).
-**Impact on plan:** no scope creep — nothing outside the plan's file list was modified except the `.planning/config.json` override already committed by the first executor.
+**Total deviations:** 6 (1 config-level Rule 3, 1 blocking Rule 3, 1 Rule 1 assertion correction, 1 Task 1 gap, 1 dependency-resolution defect resolved by override, 1 script-branch completion).
+**Impact on plan:** no scope creep — nothing outside the plan's file list was modified except the `.planning/config.json` override already committed by the first executor and the root `package.json` override added in Deviation 5.
 
 ## Verification (real output, this machine)
 

@@ -24,5 +24,10 @@
   },
   "devDependencies": {
     "js-yaml": "^4.1.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "better-sqlite3": "^13.0.3"
+    }
   }
 }

@@ -8,7 +8,7 @@
     "build": "prisma generate && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
-    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\"",
+    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\" && node --test \"test/**/*.dist.test.mjs\"",
     "db:generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy"
   },
