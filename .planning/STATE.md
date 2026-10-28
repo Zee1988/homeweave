@@ -7,7 +7,7 @@ status: executing
 stopped_at: Completed 03-05-PLAN.md
 last_updated: "2026-10-28T00:00:00.000Z"
 last_activity: 2026-10-28
-last_activity_desc: Phase 03 全部 5 个计划执行完毕，等待阶段验证
+last_activity_desc: 0.1.1 镜像已发布（双架构，9 项镜像断言 + fail-fast + 优雅关闭全通过），等待真机验证
 state_head: 19ec03d5badbfe45b284b5af3664f920263e330c
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 Phase: 03 (运行时骨架) — EXECUTING
 Plan: 5 of 5
 Status: Ready to verify
-Last activity: 2026-10-28 — 03-05 完成（fail-fast / 优雅关闭 / 镜像断言 9 项）
+Last activity: 2026-10-28 — 0.1.1 发布成功（run 40654684908：9 项镜像断言、exit 78、96 ms 排空、双架构 manifest）
 
 Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 15/15 plans executed)
 
@@ -146,7 +146,7 @@ Last session: 2026-10-28T00:00:00.000Z
 Stopped at: Completed 03-05-PLAN.md
 Resume file: .planning/phases/03-runtime/03-05-SUMMARY.md
 
-**Next action:** 对 Phase 3 做阶段验证（`/gsd-verify-work` / `gsd-audit-uat`），重点是真机项：`/data` 可写性、真实 `docker stop` 的耗时与日志顺序、watchdog 是否真的触发重启。不要先开 Phase 4。
+**Next action:** 在真实 HAOS 上安装 `0.1.1` 并做 Phase 3 阶段验证（`/gsd-verify-work`），三项只能在真机确认：`/data` 属主是否让 `node` 可写、Supervisor 的 `docker stop` 投递与耗时、watchdog 是否真的重启。CI 已覆盖容器级别的同类断言，但不能替代 Supervisor 的挂载与信号路径。不要先开 Phase 4。
 
 执行前必须先接受这三条事实：
 

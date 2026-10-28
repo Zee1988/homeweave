@@ -31,6 +31,13 @@ guard        读 homeweave_app/config.yaml → version / ref；校验格式；�
 
 **已发布版本**：`0.1.0`（Phase 2 骨架）、`0.1.1`（Phase 3 运行时行为：启动 fail-fast 与 8 秒优雅关闭，决策 D-01b）。tag 一经发布不复用，所以任何运行时行为变更都必须换版本号——这也是 `0.1.0` 的镜像永远拿不到 Phase 3 修复的原因。
 
+`0.1.1` 的发布（run 40654684908）是 9 项镜像断言与两个运行时脚本首次真实执行，全部通过，证据：
+
+- `1/9`–`9/9` 镜像内容断言 + `/health/live` 容器内 200；
+- `dir_missing` 与 `invalid_port` 两个用例都 `exit 78` 且带 `startup_failed`；
+- `docker stop` 用时 **96 ms**，`exit 0`，日志顺序 `stop accepting new requests`(13) → `prisma disconnected`(14)，无 `shutdown_forced`、无 `SIGKILL`；
+- manifest 为 `[linux/amd64, linux/arm64]`，tag 与 `app.version` 一致。
+
 ## 2. 包的可见性：先测，不要预设 private
 
 > **实测修正（2026-10-28）**：本节原先断言「用 `GITHUB_TOKEN` 推送的 package 即使源仓库公开，初始可见性仍是 private」。**首次真实发布证伪了这条**：在 `Zee1988/homeweave`（public）上推送 `0.1.0` 后，`verify-image` 的匿名 `docker pull` 直接成功，无需任何手动改可见性操作。
@@ -92,15 +99,15 @@ docker pull ghcr.io/zee1988/homeweave-ha-app:<version>
 
 回滚做法：
 
-- 旧版本镜像**保持不动**。要回到旧版本，把 `homeweave_app/config.yaml` 的 `version` 改回旧版本号并重新发布 App 元数据（`corepack pnpm generate:app`），Supervisor 会重新拉取仍然存在的旧镜像。
-- 要发新版本，就把 `config.yaml` 的 `version` 提到下一个未发布过的版本号，走完整流程。
+- 旧版本镜像**保持不动**。要回到旧版本，把 `homeweave_app/app-metadata.json` 的 `app.version` 改回旧版本号，跑 `corepack pnpm generate:app` 重生成 `config.yaml`，Supervisor 会重新拉取仍然存在的旧镜像。
+- 要发新版本，就把 `app-metadata.json` 的 `app.version` 提到下一个未发布过的版本号（`config.yaml` 是生成物，直接改它会被下一次 `generate:app` 覆盖），再同步 `scripts/validate-app-metadata.mjs` 的 `CONTRACT.version`——`V17` 是 pin，不跟随就会在 `validate:app` 处被判成漂移。
 - 想「修正一个已发布的版本」在机制上不存在；只能发新版本号。
 
 ## 6. 六种失败模式的判读
 
 | # | 现象（CI 日志） | 发生在 | 含义与处置 |
 |---|---|---|---|
-| 1 | `✗ tag already exists in GHCR; bump config.yaml version` | `guard` 或 `publish` | 该版本号已发布过。不要重跑、不要覆盖：把 `config.yaml` 的 `version` 提到下一个未发布值。若镜像其实没变，仍需新版本号。 |
+| 1 | `✗ tag already exists in GHCR; bump config.yaml version` | `guard` 或 `publish` | 该版本号已发布过。不要重跑、不要覆盖：改 `app-metadata.json` 的 `app.version` 到下一个未发布值，跑 `generate:app` 重生成 `config.yaml`，并同步 `CONTRACT.version`。若镜像其实没变，仍需新版本号。 |
 | 2 | `✗ ... failed for an authentication reason`（403 / `unauthorized` / `insufficient_scope`） | `guard` 或 `publish` | `docker manifest inspect` 的**非零退出码不等于「tag 空闲」**。认证类失败一律 fail-closed，只有「明确 not-found 文案」才判为空闲。检查 `GH_TOKEN` 是否真的传给了该 step、token 是否具备 `packages: read`。 |
 | 3 | `::warning::package has never been published; treating tag as free` | `guard`（首发） | 这是**唯一**被 `--allow-missing-package` 豁免的场景：`docker manifest inspect` 返回认证错误，且两处 `gh api` 端点（`/repos/<owner>/<repo>/packages/container/<pkg>` 与 `/users/<owner>/packages/container/<pkg>`）都返回 404，即包确实从未存在。**豁免边界**：只覆盖「认证错误 + 包不存在」。包状态为 `present` 或 `unknown` 时一律不放行；`unknown-error`（网络/工具/其它）与 flag 无关，始终 fail-closed。 |
 | 4 | `✗ manifest platforms must be exactly [linux/amd64, linux/arm64]`（实际含 `unknown/unknown` 或只有单架构） | `verify-image` | 若列表里出现 `unknown/unknown`，说明 buildx 产出了 attestation manifest —— 即 `provenance` 没有被真正关掉（`provenance: false` 必须是布尔，不能是字符串 `"false"`）。若只有单架构，说明 `platforms` 被改过。 |

@@ -82,9 +82,10 @@ Dockerfile                                       +ENV DATABASE_URL，+prebuild �
 
 - **`/data` 可写性只在 CI 外验证过**：容器以 `USER node` 运行，`/data` 的属主由 `RUN mkdir -p /data && chown node:node /data` 保证；但真实 HAOS 挂载的卷权限未在真机确认过。若 Supervisor 以不同 uid 挂载，表现是启动即 exit 78（`dir_readonly`）——这是可诊断的失败，不是静默错误，但需要真机验证（计划已明确禁止为此删 `USER node`）。
 - **兜底预算只在「排空真的卡住」时才会被看到**：本机用「连接后不发数据」复现并通过，但真实客户端行为（长轮询、SSE、极慢上传）与本次复现不同，8s 是否够用取决于实际请求时长分布。
-- **两个 CI 脚本从未被执行过**：语法与分支逻辑只能靠 CI 首次运行来确认。若首个 release run 在它们上面失败，优先怀疑脚本自身而非镜像。
+- ~~两个 CI 脚本从未被执行过~~ **已消除（run 40654684908，版本 0.1.1）**：9 项镜像断言全过；`dir_missing` 与 `invalid_port` 均 exit 78 且带 `startup_failed`；`docker stop` 用时 96 ms、exit 0、日志顺序 `stop accepting new requests`(13) → `prisma disconnected`(14)、无 `shutdown_forced`、无 `SIGKILL`；manifest 为 amd64 + arm64 且 tag 与 `app.version` 一致。这仍是 Linux 容器内的证据，不等于 HAOS 上 Supervisor 的信号投递已被验证。
+- **`better-sqlite3@13.0.3` 没有可用的 linux prebuild（原假设被证伪）**：首个 0.1.1 构建在 `linux/amd64` 的 build 阶段就以 `gyp ERR! Could not find any Python installation` 失败，说明 install 脚本回退到 `node-gyp rebuild`。修法是给 build 与 prod-deps 阶段装 `python3 make g++`（编译器不进 runtime，D-05b 仍成立），并把 `/prod` 断言改成「require 包并执行 SQL」，因为它覆盖的是 `build/Release/better_sqlite3.node` 而非 `prebuilds/`。
 
 ## 下一步
 
-- 在真实 HAOS 主机上安装一次 App，确认 `/data` 权限、`docker stop` 的退出码与日志顺序，并把结论写回 `docs/21`。
+- 在真实 HAOS 主机上安装 `0.1.1`，确认 `/data` 权限、真实 `docker stop` 的退出码与日志顺序、watchdog 是否重启，并把结论写回 `.planning/phases/03-runtime/03-VALIDATION.md` 与 `docs/21`。
 - 之后按 `docs/11_IMPLEMENTATION_ROADMAP.md` 进入 Phase 4。
