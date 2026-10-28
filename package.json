@@ -6,6 +6,7 @@
   "engines": {
     "node": ">=22"
   },
+  "packageManager": "pnpm@9.15.4",
   "scripts": {
     "generate:app": "node scripts/generate-app-metadata.mjs",
     "validate:app": "node scripts/validate-app-metadata.mjs",
