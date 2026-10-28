@@ -204,7 +204,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. App 元数据与仓库可识别性 | 6/6 | In Progress | - |
+| 1. App 元数据与仓库可识别性 | 6/6 | Complete（静态自证，HAOS 实机未验证） | - |
 | 2. 镜像构建与发布链路 | 4/4 | Complete（run 40614562404 全绿） | - |
 | 3. 运行时骨架 | 0/TBD | Not started | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
