@@ -165,7 +165,11 @@ jobs:
 
   publish:
     name: publish (build + push both architectures)
+    # guard is listed because this job reads needs.guard.outputs -- a job that
+    # reads another job's outputs without listing it in needs gets an empty
+    # string, not an error, and the failure only shows up at runtime.
     needs:
+      - guard
       - static
     # The only thing that may skip a rebuild. Without this line a resume run would
     # fail in guard instead, because the tag it needs to re-verify already exists.
@@ -235,6 +239,7 @@ jobs:
   verify-image:
     name: verify-image (anonymous pull + content + manifest)
     needs:
+      - guard
       - publish
       - static
     # Runs when publish SUCCEEDED, or when publish was SKIPPED under an explicit
