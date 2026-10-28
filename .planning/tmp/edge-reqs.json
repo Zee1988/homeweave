@@ -1,9 +1,0 @@
-[
-  { "id": "IMG-01", "text": "开发者可用仓库内单一脚本/命令在本地构建出可启动的生产镜像" },
-  { "id": "IMG-02", "text": "生产镜像包含 NestJS 构建产物、Prisma Client 与迁移文件，不含 devDependencies、源码与 source map" },
-  { "id": "IMG-03", "text": "GitHub Actions 构建 amd64 与 aarch64 镜像，推送到 GHCR 并生成多架构 manifest" },
-  { "id": "IMG-04", "text": "镜像 tag 与 App 版本号一致，且发布顺序为先镜像、后用户可见版本号" },
-  { "id": "IMG-05", "text": "CI 在构建前校验 App 元数据与 Dockerfile（YAML/字段合法性、必填项、版本一致性），失败即阻断发布" },
-  { "id": "SEC-03", "text": "镜像、仓库与 CI 中不存在硬编码密钥；构建过程不把密钥写入镜像层或构建缓存" },
-  { "id": "VER-01", "text": "仓库提供可复现的 lint / typecheck / unit 命令，并在 CI 中执行" }
-]

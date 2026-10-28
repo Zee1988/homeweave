@@ -33,3 +33,5 @@ Thumbs.db
 .idea/
 .vscode/
 .planning/.tmp/
+# Scratch scripts and intermediate dumps produced while orchestrating a phase.
+.planning/tmp/
