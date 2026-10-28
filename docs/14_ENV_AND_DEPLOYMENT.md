@@ -37,6 +37,25 @@ EXPO_ACCESS_TOKEN=
 
 `DATABASE_URL` 的取值随部署形态变化，不要混淆：本机开发用相对的 `file:./data/app.db`（`data/` 已 gitignore）；一次性校验库用 `file:.tmp/dev.db`；Home Assistant OS App 容器内必须用持久卷上的绝对路径 `file:/data/homeweave.db`（见 `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md`）。Prisma 7 起连接串不写在 `schema.prisma`，而由 `apps/api/prisma.config.ts` 读取该变量。
 
+### 镜像内的默认值
+
+生产镜像（`Dockerfile`）已写入 `ENV DATABASE_URL=file:/data/homeweave.db`，因此 HAOS App 与 `docker run` 都无需额外传参即可启动；`/data` 是 Supervisor 的持久卷，也是唯一会被备份覆盖的目录（该路径仍可覆盖，`scripts/ci/assert-failfast.sh` 正是靠覆盖它指向不存在的目录来验证退出码 78）。
+
+镜像**不设置 `PORT`**：由 Supervisor 注入。镜像级默认值在 App 里会被覆盖、在 `docker run` 里却会生效，两种部署就会监听不同端口——这正是要避免的分歧。
+
+`DISK_MIN_FREE_BYTES` 是可选的磁盘下限，默认 10 MiB（`10485760`）。低于该值时启动仍继续，只写一条 `startup_disk_low` 警告并让 `/health/ready` 返回 503；格式错误或负数静默回退到默认值（ready 是配置写错时仍必须作答的端点，不能因此变 500）。
+
+### 退出码语义
+
+进程只使用两个退出码，供 Supervisor / Docker 区分「可以靠改配置修好」与「其它故障」：
+
+| 退出码 | 含义 | `reason` |
+| --- | --- | --- |
+| `78` | `EX_CONFIG`：运行环境或配置不可用，运维可修 | `invalid_port`、`database_path_empty`、`dir_missing`、`dir_readonly`、`write_failed` |
+| `1` | 其它任何导致无法提供服务的情况 | `query_failed`、`migrations_unreadable`、`unexpected` |
+
+失败时 stdout 输出一条 `startup_failed` 记录，含 `reason`、`exitCode`、`message`。正常启动输出 `startup_ok` 单条记录后才监听端口；收到停止信号时按 `stop accepting new requests` → `prisma disconnected` 的顺序收尾，8 秒内未排空则记 `shutdown_forced` 并以退出码 0 结束（避免被 Supervisor 的 `SIGKILL` 打断）。
+
 ## 客户端公开配置
 
 - 服务器 URL 应通过用户连接流程保存；不应假设一个统一的部署 URL。

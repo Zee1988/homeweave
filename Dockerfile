@@ -10,9 +10,13 @@
 # (threat T-02-04, plan 02-03).
 #
 # Deliberately absent, with reasons:
-#   - no HEALTHCHECK: the API exposes no HTTP endpoint until Phase 3, so a probe
-#     would make the container report unhealthy forever (D-7). "It started" is
-#     proven by the startup log line in scripts/ci/assert-image.sh instead.
+#   - no HEALTHCHECK: `/health/live` exists since Phase 3, so a probe would now be
+#     meaningful, but a failing HEALTHCHECK marks the container unhealthy and hands
+#     restart policy to Docker — which on HAOS fights the Supervisor's own watchdog
+#     and its backoff. Liveness is asserted from outside
+#     (scripts/ci/assert-image.sh check 9) instead, so a failure is reported by the
+#     check that can also print the log. Revisit only together with the Supervisor
+#     watchdog configuration, not in isolation.
 #   - no VOLUME /data: Supervisor bind-mounts /data itself; a declared VOLUME would
 #     additionally create an anonymous volume that no backup ever covers.
 #   - no ARG/ENV/COPY secret plumbing: if a private registry token is ever needed it
@@ -79,6 +83,19 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # Write down whichever path is actually used, in this comment.
 RUN pnpm --filter @homeweave/api deploy --prod /prod
 
+# better-sqlite3 must ship as a prebuilt N-API addon: the root pnpm override pins 13.0.3,
+# whose tarball carries `prebuilds/linux-<arch>.node` for glibc and musl on x64 and arm64
+# and has no install script, which is why the runtime stage needs no compiler (D-05b).
+#
+# If that file is gone, something replaced the dependency and the image would build fine
+# and then fail at runtime with "Could not locate the bindings file" — a failure a operator
+# reads as a deployment problem rather than a dependency one. Fail the build instead.
+#
+# Asserted on /prod (what the runtime stage copies), not on the install tree, and with a
+# search fallback so a pnpm layout change (hoisted vs. `.pnpm/` links) reports the real
+# problem — a missing prebuild — instead of a path mismatch.
+RUN node -e "const fs=require('fs');const base='/prod/node_modules';const pinned=base+'/better-sqlite3/prebuilds/linux-'+process.arch+'.node';if(fs.existsSync(pinned)){console.log('better-sqlite3 prebuild: '+pinned);process.exit(0)}const want='linux-'+process.arch+'.node';const hits=[];(function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const p=dir+'/'+entry.name;if(entry.isDirectory())walk(p);else if(entry.name===want&&p.includes('better-sqlite3'))hits.push(p)}})(base);if(hits.length===0){console.error('better-sqlite3 prebuild missing: '+pinned);process.exit(1)}console.log('better-sqlite3 prebuild (found by search): '+hits[0])"
+
 FROM node:22-bookworm-slim AS runtime
 
 # Prisma's engine naming is tied to the OpenSSL series (bookworm = 3.0.x) and
@@ -89,6 +106,17 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
+
+# Where the SQLite file lives inside the container, and the reason the image works with no
+# options at all: /data is the Supervisor's persistent volume, so the default is also the
+# only directory that survives a restart and is covered by a backup. `DATABASE_URL` stays
+# overridable, which is how the fail-fast container check in scripts/ci/assert-failfast.sh
+# points at a directory that does not exist and expects exit 78.
+#
+# PORT is deliberately NOT set: the Supervisor injects it, and an image-level default would
+# be shadowed in the App but win in a plain `docker run`, so the two deployments would
+# listen on different ports.
+ENV DATABASE_URL=file:/data/homeweave.db
 WORKDIR /app
 
 # /data is the Home Assistant App persistent volume. Creating it with the right
