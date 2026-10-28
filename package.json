@@ -11,6 +11,7 @@
     "validate:app": "node scripts/validate-app-metadata.mjs",
     "check:app": "node scripts/generate-app-metadata.mjs --check",
     "test:app": "node scripts/generate-app-metadata.mjs --check && node --test \"scripts/**/*.test.mjs\"",
+    "probe:prisma-engine": "node scripts/probe-prisma-engine.mjs",
     "lint": "node scripts/lint-workspace.mjs",
     "typecheck": "node scripts/typecheck-workspace.mjs",
     "test": "corepack pnpm@9.15.4 run test:app && corepack pnpm@9.15.4 -r --if-present test"
