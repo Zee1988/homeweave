@@ -20,15 +20,15 @@ key-files:
     - .github/workflows/ci.yml
     - .github/workflows/release.yml
     - docs/23_IMAGE_RELEASE_RUNBOOK.md
-  modified:
-    - package.json
-    - README.md
-    - scripts/validate-workflows.mjs
-    - scripts/validate-workflows.test.mjs
     - scripts/check-tag-free.mjs
     - scripts/check-tag-free.test.mjs
     - scripts/assert-manifest-platforms.mjs
     - scripts/assert-manifest-platforms.test.mjs
+    - scripts/validate-workflows.mjs
+    - scripts/validate-workflows.test.mjs
+  modified:
+    - package.json
+    - README.md
 key-decisions:
   - "ci.yml 的 push/pull_request 分支写成 [master, main]：仓库实际默认分支是 master（本地分支 master、无 remote、config.yaml 的 url 用 tree/master、02-RESEARCH-CI.md 写 branches: [master]），计划文本的 [main] 单独使用会让门禁永不触发"
   - "release.yml 的 tag 注解用镜像引用 + run URL，不使用 digest：tag job 拿不到 digest（assert-manifest-platforms.mjs 不输出它），不编造"

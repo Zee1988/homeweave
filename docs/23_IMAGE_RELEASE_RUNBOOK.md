@@ -110,7 +110,13 @@ docker pull ghcr.io/zee1988/homeweave-ha-app:<version>
 
 ## 8. aarch64 的验证边界
 
-`assert-image.sh` 的引擎架构检查是**条件性**的：只有当 `apps/api/prisma/ENGINE_DECISION` 存在时才断言。若在 amd64 主机（或仅 amd64 的 runner）上无法真实运行 aarch64 产物，结论一律标 **unknown**，不得写成「已验证」。同理，`docker pull` 成功只证明 manifest list 存在且可下载，**不**证明 arm64 位下的运行时行为。
+`assert-image.sh` 的引擎架构检查由 `apps/api/prisma/ENGINE_DECISION` 的**取值**决定，不是由「文件在不在」决定：
+
+- `NATIVE_ENGINE` → 在容器内读 `process.arch`，再按 `debian-openssl-3.0.x` / `linux-arm64-openssl-3.0.x` 查找原生引擎文件；
+- `RUST_FREE` → 打印 `- skipped (RUST_FREE)` 并计为该条通过（Prisma 7 走 WASM query compiler，没有原生引擎文件可匹配）；
+- **文件缺失、为空、或取值不是上面两个 → exit 1**。没有第三条「跳过」出口：`缺文件` 走的是 `case` 的 `*)` 分支，也就是失败。
+
+即便如此，若在 amd64 主机（或仅 amd64 的 runner）上无法真实运行 aarch64 产物，结论一律标 **unknown**，不得写成「已验证」。同理，`docker pull` 成功只证明 manifest list 存在且可下载，**不**证明 arm64 位下的运行时行为。
 
 ## 9. 本阶段「已验证 / 未验证」的诚实边界
 
