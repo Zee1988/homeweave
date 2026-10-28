@@ -3,17 +3,17 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 02
 current_phase_name: 镜像构建与发布链路
-status: executing
-stopped_at: Phase 02 wave 3 complete — 02-03 done (3 of 4 plans); 02-04 CI and release is next
-last_updated: "2026-10-28T00:55:00.000Z"
+status: verifying
+stopped_at: Phase 02 wave 4 complete — all 4 plans executed; phase verdict is partial (image never built, CI never ran)
+last_updated: "2026-10-28T00:46:00.000Z"
 last_activity: 2026-10-28
-last_activity_desc: 02-03 landed — multi-stage Dockerfile + 8 image assertions + fail-fast build:image (116 tests / 22 dockerfile rules)
-state_head: 82009fa5733b2a00a94c1b721b5ff1301abe5bee
+last_activity_desc: 02-04 landed — ci.yml + release.yml + validate-workflows (20 rules / 55 cases), 219 tests green, image release is CI-only
+state_head: 8d6874a563a0d15c8ee6547573c807a64fc9e2d1
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 10
-  completed_plans: 9
+  completed_plans: 10
 ---
 
 # Project State
@@ -27,30 +27,30 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 
 ## Current Position
 
-Phase: 02 (镜像构建与发布链路) — EXECUTING
-Plan: 3 of 4（02-04 CI 与发布待执行）
-Status: wave 3 complete — **镜像从未构建，容器内 8 条断言从未运行**（本机无 docker、无 bash）
-Last activity: 2026-10-28 — 02-03 landed; Dockerfile 结构已闭环，容器侧交 02-04 的 CI 首跑
+Phase: 02 (镜像构建与发布链路) — VERIFYING (partial)
+Plan: 4 of 4（全部计划已执行；阶段结论为 partial）
+Status: wave 4 complete — **镜像从未构建，CI 从未运行，GHCR 无任何 tag**（本机无 docker、无 bash；发布链路是 CI-only）
+Last activity: 2026-10-28 — 02-04 landed; ci.yml/release.yml 与 `validate:workflows` 已闭环，首次真实构建待 CI 首跑
 
-Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 9/10 plans executed)
+Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 10/10 plans executed)
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 8
-- Average duration: ~9 min
-- Total execution time: ~1.2 hours
+- Total plans completed: 10
+- Average duration: ~33 min
+- Total execution time: ~5.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 6 | ~0.4 h | ~7 min |
-| 02 | 2 | ~1.75 h | ~52 min |
+| 02 | 4 | ~5.1 h | ~77 min |
 
 **Recent Trend:**
-- Last 5 plans: 02-01 (~45 min), 02-02 (~60 min)
-- Trend: 上升（Phase 02 的计划明显重于 Phase 01 的单文件校验类改动）
+- Last 4 plans: 02-01 (~45 min), 02-02 (~60 min), 02-03 (~50 min), 02-04 (~150 min)
+- Trend: 上升（Phase 02 计划均为跨文件 + 门禁接线；02-04 额外被两次执行器上下文上限打断，由编排侧复验补账）
 
 *Updated after each plan completion*
 **Per-Plan Metrics:**
@@ -63,6 +63,7 @@ Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 9/10 plans
 | Phase 02 P01 | ~45 min | 6 tasks | 12 files |
 | Phase 02 P02 | ~60 min | 6 tasks | 12 files |
 | Phase 02 P03 | ~50 min | 5 tasks | 10 files |
+| Phase 02 P04 | ~150 min | 7 tasks | 11 files |
 
 ## Accumulated Context
 
@@ -94,6 +95,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 02]: `pnpm deploy --prod` 是唯一自洽的运行时依赖形态 —— 直接拷 `node_modules` 会带上 `.pnpm/` 与指向 `/app` 的绝对链接，relocate 到 runtime 后解析不到；`--legacy` 是 pnpm 10 的旗标，9.15.4 没有
 - [Phase 02]: `core.autocrlf=true` 会让 `.sh` 以 CRLF 检出，Linux CI 报 `bad interpreter`（本机从不执行该文件，缺陷只在 CI 暴露）；`.gitattributes` 只钉 `*.sh`/`Dockerfile`/`*.mjs`，不用 `* text=auto` 以免全仓库行尾重排
 - [Phase 02]: 镜像标签的版本号单一来源是 `homeweave_app/config.yaml`；读不到就 exit 1，拒绝给镜像打 `undefined` 标签
+- [Phase 02]: workflow 断言一律用 `js-yaml` 解析后按对象取值，禁止 `JSON.stringify().includes()` —— 字符串匹配无法区分 `provenance: false`（布尔，有效）与 `provenance: "false"`（字符串，buildx 会产出 `unknown/unknown` 平台）
+- [Phase 02]: workflow 校验器同时被单测（fixture 全绿 + 单点变异必红）与 lint 门禁调用；fixture 自身必须是全绿基线，否则红例无法归因
+- [Phase 02]: `verify-image` 用匿名 `docker pull` 作为「公开可拉」的唯一证据，因此 GHCR 包若为 private 首次发布会在此步失败 —— 这是有意暴露的边界，不用 `--allow-missing-package` 把它抹平
+- [Phase 02]: `tag` 步骤需要 `fetch-depth: 0`（默认浅克隆拿不到历史 tag）；发布顺序门禁依赖历史 tag 的存在性判断
 
 ### Pending Todos
 
@@ -104,6 +109,8 @@ None yet.
 - [Phase 1] GHCR `owner`、Git 仓库 URL、`maintainer`、最低 HA / Supervisor 版本均为占位符，必须在 Phase 1 落盘为显式决策，不得沿用 `<owner>` 模板值
 - [All] 无真实 Home Assistant OS 环境：所有"安装/升级成功"结论只能在静态或容器模拟层给出，HAOS 实机项一律记录为未验证
 - [Phase 2] 本机无 Docker：镜像能否构建、多架构 manifest 是否正确、arm64 容器内 Prisma 查询是否成功，全部只能由 02-03/02-04 与 CI 给出；`RUST_FREE` 只证明「不存在平台相关二进制」，不证明「arm64 容器已跑通」
+- [Phase 2] **镜像从未构建、CI 从未运行、GHCR 无任何 tag**：`ci.yml`/`release.yml` 只经过静态校验（20 条 workflow 规则 + 55 用例）。02-VERIFICATION.md 判定为 `partial`，在首次真实 CI 运行前不得宣称 Phase 2 通过
+- [Phase 2] 首次发布预期在 `verify-image` 的匿名 pull 处失败（GHCR 包默认 private）；处理方式是把包改为 public 后重跑，而不是给匿名拉取加豁免
 - [Phase 5] Web UI 载体未定，可能影响镜像体积与 Phase 2 的构建产物边界
 
 ## Deferred Items
@@ -116,8 +123,14 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T00:55:00.000Z
-Stopped at: Completed 02-03-PLAN.md (phase 02 wave 3 done, 3/4 plans)
-Resume file: None
+Last session: 2026-10-28T00:46:00.000Z
+Stopped at: Completed 02-04-PLAN.md (phase 02 wave 4 done, 4/4 plans); phase verdict = partial
+Resume file: `.planning/phases/02-image-release/02-VERIFICATION.md`
 
-**Next action:** `/gsd-execute-phase 2 --wave 4` 执行 `02-04-PLAN.md`（CI 与发布）。开工前读 02-03-SUMMARY 的 Next Phase Readiness，三条硬约束：① `verify-image` job 必须真实调用 `sh scripts/ci/assert-image.sh <ref>`，否则脚本退化成注释；② 跨架构要 `--platform linux/amd64,linux/arm64` 并去掉 `--load` 改 `--push`；③ `ENGINE_DECISION` 若翻转成 NATIVE_ENGINE，`prod-deps` 阶段必须重跑 `prisma generate`，否则镜像里没有引擎文件。
+**Next action:** Phase 2 剩余的是**不可在本机完成**的部分，按顺序：
+
+1. 把 `release.yml` 的 `workflow_dispatch` 跑一次（`resume_from_verify=false`），确认 `static → guard → publish → verify-image → tag` 全链路；预期首次在 `verify-image` 的匿名 `docker pull` 处失败（GHCR 包 private）。
+2. 失败后把 GHCR 包改为 public 并重跑，直到匿名 pull 成功、manifest 同时列出 `amd64` 与 `arm64`，再勾选 Phase 2 为完成。
+3. 之后才讨论 Phase 3（运行时骨架）：`/gsd-discuss-phase 3`。
+
+未验证清单与逐条判据见 02-VERIFICATION.md，不要在没有 CI 运行记录的情况下把任何一条改写成「通过」。

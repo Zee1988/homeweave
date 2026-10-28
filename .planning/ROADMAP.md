@@ -25,7 +25,7 @@
 ## Phases
 
 - [x] **Phase 1: App 元数据与仓库可识别性** - 让 Supervisor 认得出这个仓库与 HomeWeave 条目（静态自证通过；HAOS 实机未验证）
-- [ ] **Phase 2: 镜像构建与发布链路** - 先镜像后版本号，多架构 manifest 公开可拉取，CI 作门禁
+- [ ] **Phase 2: 镜像构建与发布链路** - 先镜像后版本号，多架构 manifest 公开可拉取，CI 作门禁（4/4 计划已执行；**镜像未构建、CI 未运行 → partial**）
 - [ ] **Phase 3: 运行时骨架** - 进程能自证健康、日志脱敏、可优雅停止、配置错就 fail-fast
 - [ ] **Phase 4: 数据持久化与受控迁移** - `/data` 数据跨重启与升级保留，迁移失败不清库
 - [ ] **Phase 5: Ingress Web UI 与认证边界** - 侧边栏打开可用页面，绕过 Ingress 默认拒绝
@@ -77,13 +77,13 @@
   3. CI 在构建前依次执行元数据/Dockerfile 校验、lint、typecheck、unit，任一步失败即阻断发布（可用一次故意注错的提交证明阻断生效）。
   4. 镜像层、构建缓存、workflow 文件与仓库中不存在硬编码密钥；密钥扫描与镜像历史检查是发布门禁，不是可选步骤。
   5. 当目标版本标签在 GHCR 已存在时 CI 拒绝覆盖/复用，并要求先发布镜像再提交版本号（发布顺序存在可观测检查点）。
-**Plans**: TBD
+**Plans**: 4/4 plans executed（verdict: **partial** — 见 `.planning/phases/02-image-release/02-VERIFICATION.md`）
+- [x] 02-01-PLAN.md — monorepo 骨架与最小 NestJS/Prisma 工程（真实构建产物 + 迁移文件）
+- [x] 02-02-PLAN.md — 生产就绪的 Prisma/engines/运行时依赖形态（`pnpm deploy --prod`、`ENGINE_DECISION`）
+- [x] 02-03-PLAN.md — 多阶段 Dockerfile + `validate:dockerfile`（22 规则）+ fail-fast `build:image`
+- [x] 02-04-PLAN.md — `ci.yml` / `release.yml` / `validate:workflows`（20 规则 / 55 用例）+ 发布 runbook
 
-计划切片（供 plan-phase 细化，预期 4 plans）：
-- monorepo 骨架 + 最小 NestJS/Prisma 工程（仅够产出真实构建产物与迁移文件）
-- 生产 Dockerfile（多架构友好的 Node 运行时、Prisma engine 目标架构校验、非 root 运行）
-- GitHub Actions：静态门禁 → 双架构构建 → manifest 发布 → 权限最小化
-- 版本/标签一致性与「标签已存在即拒绝」的发布顺序检查
+**未验证（阶段结论为 partial 的原因）**：镜像从未构建、容器内 8 条断言从未运行、CI 从未运行、GHCR 无任何 tag。全部 4 个计划只获得静态证据；首次真实构建必须由 CI 首跑给出。
 
 **验证类**: 静态（CI 校验、workflow/YAML lint）+ 容器模拟（本地 build 与运行、manifest 拉取）；aarch64 运行结果在 amd64 主机上不可得时须标注为未验证。
 
@@ -201,7 +201,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. App 元数据与仓库可识别性 | 6/6 | In Progress | - |
-| 2. 镜像构建与发布链路 | 0/TBD | Not started | - |
+| 2. 镜像构建与发布链路 | 4/4 | Partial（静态证据齐备；镜像/CI 未运行） | - |
 | 3. 运行时骨架 | 0/TBD | Not started | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
 | 5. Ingress Web UI 与认证边界 | 0/TBD | Not started | - |

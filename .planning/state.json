@@ -11,7 +11,7 @@
     {
       "number": "2",
       "name": "镜像构建与发布链路",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "3",
@@ -42,7 +42,7 @@
   "next": {
     "command": "/gsd-progress --next",
     "label": "Advance to the next step",
-    "reason": "Phase 2 of 7 · executing"
+    "reason": "Phase 2 of 7 · 4/4 plans executed, verdict partial — first real CI run still pending"
   },
-  "updated_at": "2026-10-28T00:12:59.311Z"
+  "updated_at": "2026-10-28T00:47:00.000Z"
 }
