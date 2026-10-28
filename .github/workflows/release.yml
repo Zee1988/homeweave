@@ -1,0 +1,324 @@
+# release.yml -- image first, git tag second, enforced by the dependency graph.
+#
+#   workflow_dispatch(version, confirm_version, resume_from_verify=false)
+#     guard        read config.yaml -> version/ref, cross-check the typed inputs,
+#                  then either the tag must be free (normal) or must already
+#                  exist (resume)
+#       static     the same seven static gates ci.yml runs
+#         publish  if: !inputs.resume_from_verify -- re-assert the tag is free,
+#                  then build and push both architectures
+#           verify-image   anonymous pull must succeed, then content and manifest
+#                          assertions
+#             tag    only now may a git tag exist, and it is pushed
+#
+# WHY THE ORDER IS ENFORCED RATHER THAN DOCUMENTED
+# tag.needs includes verify-image, and verify-image is green only when the image
+# could be pulled with no credentials at all. A git tag therefore cannot exist
+# before a pullable image does. Audit criterion this makes mechanically true: the
+# tag commit time must be later than the GHCR manifest created_at.
+#
+# WHY A RESUME MAY NOT REBUILD
+# A first publish leaves the package private, so verify-image fails on the
+# anonymous pull. Re-running everything would hit guard's tag-must-be-free check
+# and fail forever. The fix is an explicit, auditable input -- never a weakened tag
+# check: with resume_from_verify=true, publish is skipped entirely and verify-image
+# runs on the always() branch, which requires needs.publish.result == skipped. A
+# FAILED publish must never verify.
+#
+# SECRETS: none. Only the repository-scoped GITHUB_TOKEN is referenced.
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release; must equal the homeweave_app/config.yaml version (no v prefix)'
+        required: true
+        type: string
+      confirm_version:
+        description: 'Type the same version again; it is typed twice on purpose'
+        required: true
+        type: string
+      resume_from_verify:
+        description: 'Skip publish and only re-run verify-image (use after making the GHCR package public)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: guard (version source + tag availability)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      # No pnpm install in this job on purpose: it must not depend on the lockfile
+      # or on js-yaml being installed (research C-2 -- require('js-yaml') here would
+      # crash the job before it checked anything). config.yaml's version is a
+      # top-level quoted scalar, so one anchored regex is enough.
+      - name: Resolve version and image reference
+        id: resolve
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_CONFIRM: ${{ inputs.confirm_version }}
+        run: |
+          set -euo pipefail
+          VERSION=$(node -e 'const fs=require("fs");const t=fs.readFileSync("homeweave_app/config.yaml","utf8");const m=t.match(/^version:\s*"([^"]+)"/m);if(!m){console.error("config.yaml has no quoted top-level version line");process.exit(1);}process.stdout.write(m[1]);')
+          IMAGE=$(node -e 'const fs=require("fs");const t=fs.readFileSync("homeweave_app/config.yaml","utf8");const m=t.match(/^image:\s*(\S+)\s*$/m);if(!m){console.error("config.yaml has no top-level image line");process.exit(1);}process.stdout.write(m[1]);')
+          echo "config.yaml version: $VERSION"
+          echo "config.yaml image:   $IMAGE"
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::config.yaml version must match ^[0-9]+.[0-9]+.[0-9]+$ (no v prefix), got $VERSION"
+            exit 1
+          fi
+          if [ "$VERSION" != "$INPUT_VERSION" ]; then
+            echo "::error::input version does not match the config.yaml version"
+            exit 1
+          fi
+          if [ "$VERSION" != "$INPUT_CONFIRM" ]; then
+            echo "::error::confirm_version does not match version -- the version is typed twice so a typo cannot ship"
+            exit 1
+          fi
+          {
+            echo "version=$VERSION"
+            echo "ref=$IMAGE:$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      # GH_TOKEN is not exported by Actions automatically. Without it the gh
+      # probes run anonymously, both package probes answer nothing, the state is
+      # unknown, and a first publish stays red on this very step.
+      - name: Tag availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ steps.resolve.outputs.ref }}
+          RESUME: ${{ inputs.resume_from_verify }}
+        run: |
+          set -euo pipefail
+          if [ "$RESUME" = "true" ]; then
+            echo "resume path: the image must already exist in GHCR, so the tag must be present"
+            node scripts/check-tag-free.mjs "$REF" --expect exists
+          else
+            echo "normal path: the tag must not exist yet"
+            node scripts/check-tag-free.mjs "$REF" --expect free --allow-missing-package
+          fi
+
+  static:
+    name: static gate
+    needs:
+      - guard
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Validate workflow structure
+        run: corepack pnpm validate:workflows
+
+      - name: Validate App metadata
+        run: corepack pnpm validate:app
+
+      - name: Validate Dockerfile
+        run: corepack pnpm validate:dockerfile
+
+      - name: Lint
+        run: corepack pnpm lint
+
+      - name: Typecheck
+        run: corepack pnpm typecheck
+
+      - name: Unit tests
+        run: corepack pnpm test
+
+      - name: Check generated App metadata is in sync
+        run: corepack pnpm check:app
+
+  publish:
+    name: publish (build + push both architectures)
+    needs:
+      - static
+    # The only thing that may skip a rebuild. Without this line a resume run would
+    # fail in guard instead, because the tag it needs to re-verify already exists.
+    if: ${{ !inputs.resume_from_verify }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Re-asserted here although guard already did it: this is the job that would
+      # overwrite a published image, so the assertion must live in the same job as
+      # the push. --allow-missing-package waives exactly one case -- an
+      # authentication error while the package provably does not exist yet.
+      - name: Tag must still be free
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ needs.guard.outputs.ref }}
+        run: |
+          set -euo pipefail
+          node scripts/check-tag-free.mjs "$REF" --expect free --allow-missing-package
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          # provenance and sbom are OFF as booleans, not as the strings "false".
+          # With provenance on, buildx appends an attestation manifest whose
+          # platform is unknown/unknown, and the exactly-two-platforms assertion
+          # then fails. It is one or the other, not both.
+          provenance: false
+          sbom: false
+          tags: 'type=raw,value=ghcr.io/zee1988/homeweave-ha-app:${{ needs.guard.outputs.version }}'
+
+  verify-image:
+    name: verify-image (anonymous pull + content + manifest)
+    needs:
+      - publish
+      - static
+    # Runs when publish SUCCEEDED, or when publish was SKIPPED under an explicit
+    # resume. It must never run after a FAILED publish -- that would launder a
+    # broken release into a green one. Hence skipped is named, never "!= skipped".
+    if: ${{ always() && needs.static.result == 'success' && (needs.publish.result == 'success' || (inputs.resume_from_verify && needs.publish.result == 'skipped')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    # Deliberately no packages: read -- the whole point is that this job holds no
+    # credential for GHCR.
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      # Proving "pullable with a token" proves nothing about what Supervisor can
+      # do. A runner with leftover credentials would pull successfully as an
+      # authenticated user, so the credentials are removed FIRST -- the logout and
+      # the emptied config.json are the evidence, not a formality.
+      - name: Anonymous pull must succeed
+        env:
+          REF: ${{ needs.guard.outputs.ref }}
+        run: |
+          set -euo pipefail
+          docker logout ghcr.io || true
+          printf '{}' > "$HOME/.docker/config.json"
+          docker pull "$REF"
+
+      - name: Image content assertions
+        env:
+          REF: ${{ needs.guard.outputs.ref }}
+        run: |
+          set -euo pipefail
+          bash scripts/ci/assert-image.sh "$REF"
+
+      - name: Manifest platform and version assertions
+        env:
+          REF: ${{ needs.guard.outputs.ref }}
+          VERSION: ${{ needs.guard.outputs.version }}
+        run: |
+          set -euo pipefail
+          node scripts/assert-manifest-platforms.mjs "$REF" "$VERSION"
+
+  tag:
+    name: tag (git tag only after the image verified)
+    needs:
+      - guard
+      - verify-image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      # fetch-depth 0, not the default shallow clone: a shallow clone fetches no
+      # tags, so an already-existing remote tag would be invisible here and the
+      # idempotency check below would silently create a duplicate.
+      - name: Check out the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # The tag name is the version, character for character, with no v prefix.
+      # Nothing is rebuilt here -- this job only records what was already verified.
+      - name: Create and push the tag
+        env:
+          VERSION: ${{ needs.guard.outputs.version }}
+          REF: ${{ needs.guard.outputs.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          # Without an identity, `git tag -a` fails with "unable to auto-detect
+          # email address", so this is a precondition, not a nicety.
+          git config user.name "homeweave-release-bot"
+          git config user.email "homeweave-release-bot@users.noreply.github.com"
+          if git rev-parse -q --verify "refs/tags/$VERSION" > /dev/null; then
+            TAG_SHA=$(git rev-list -n 1 "refs/tags/$VERSION")
+            HEAD_SHA=$(git rev-parse HEAD)
+            if [ "$TAG_SHA" = "$HEAD_SHA" ]; then
+              echo "tag $VERSION already points at HEAD; nothing to do"
+              exit 0
+            fi
+            echo "::error::tag $VERSION already points at $TAG_SHA, not HEAD $HEAD_SHA; a published tag is never moved"
+            exit 1
+          fi
+          git tag -a "$VERSION" -m "$REF verified at $RUN_URL"
+          git push origin "$VERSION"
