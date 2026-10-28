@@ -353,6 +353,66 @@ export function checkJobGraph(doc, edges = {}) {
   return problems;
 }
 
+/** `needs.<job>.outputs` / `needs.<job>.result` inside any job string. */
+const NEEDS_REF = /\bneeds\.([A-Za-z0-9_-]+)\./g;
+
+function collectNeedRefs(value, out = new Set()) {
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(NEEDS_REF)) out.add(match[1]);
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) collectNeedRefs(entry, out);
+    return out;
+  }
+  if (isPlainObject(value)) {
+    for (const entry of Object.values(value)) collectNeedRefs(entry, out);
+  }
+  return out;
+}
+
+/**
+ * F13 -- a job that reads `needs.X.outputs` must list X in its own `needs`.
+ *
+ * GitHub does not reject this. It expands the expression to the empty string,
+ * so `docker manifest inspect ""` becomes `invalid reference format` and the
+ * job fails for a reason that names the wrong thing entirely. The 2026-10-28
+ * first real run of release.yml failed exactly here: `publish` read
+ * `needs.guard.outputs.ref` while only depending on `static`.
+ *
+ * A self-reference is reported separately: it is always a typo, never a graph.
+ *
+ * @param {object|null} doc
+ * @returns {string[]}
+ */
+export function checkNeedsReferences(doc) {
+  if (!isPlainObject(doc)) return [];
+
+  const problems = [];
+  const jobs = jobsOf(doc);
+
+  for (const [jobName, job] of Object.entries(jobs)) {
+    const declared = new Set(asArray(isPlainObject(job) ? job.needs : undefined).map(String));
+    for (const referenced of collectNeedRefs(job)) {
+      if (referenced === jobName) {
+        problems.push(`job "${jobName}" references needs.${referenced} but a job cannot depend on itself`);
+        continue;
+      }
+      if (!has(jobs, referenced)) {
+        problems.push(`job "${jobName}" references needs.${referenced}, which is not a job in this workflow`);
+        continue;
+      }
+      if (!declared.has(referenced)) {
+        problems.push(
+          `job "${jobName}" references needs.${referenced} but does not list "${referenced}" in needs [${[...declared].join(', ') || '(none)'}]; GitHub expands the expression to an empty string instead of failing, so the job dies later on an unrelated-looking error`,
+        );
+      }
+    }
+  }
+
+  return problems;
+}
+
 /** Tokens the `guard` job must contain -- BOTH branches, or one branch can vanish. */
 const GUARD_SNIPPETS = ['check-tag-free.mjs', '--expect free', '--expect exists', '--allow-missing-package', 'GH_TOKEN'];
 
@@ -789,6 +849,7 @@ export function validateWorkflows({ profile = 'all', cwd = process.cwd() } = {})
     add('checkPermissions[ci]', () => checkPermissions(ciDoc, { packagesWrite: [], contentsWrite: [] }));
     add('checkPinnedActions[ci]', () => checkPinnedActions(ciDoc));
     add('checkJobGraph[ci]', () => checkJobGraph(ciDoc, EDGES.ci));
+    add('checkNeedsReferences[ci]', () => checkNeedsReferences(ciDoc));
     add('checkCiGates', () => checkCiGates(ciDoc));
     add('checkJobsHaveCheckout[ci]', () => checkJobsHaveCheckout(ciDoc));
   }
@@ -801,6 +862,7 @@ export function validateWorkflows({ profile = 'all', cwd = process.cwd() } = {})
     );
     add('checkPinnedActions[release]', () => checkPinnedActions(releaseDoc));
     add('checkJobGraph[release]', () => checkJobGraph(releaseDoc, EDGES.release));
+    add('checkNeedsReferences[release]', () => checkNeedsReferences(releaseDoc));
     add('checkResumePath', () => checkResumePath(releaseDoc));
     add('checkBuildPushFlags', () => checkBuildPushFlags(releaseDoc, 'publish'));
     add('checkNoShellBuild', () => checkNoShellBuild(releaseDoc, 'publish'));

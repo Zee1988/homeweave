@@ -16,6 +16,7 @@ import {
   checkFiles,
   checkJobGraph,
   checkJobsHaveCheckout,
+  checkNeedsReferences,
   checkNoPrivilegedPrTrigger,
   checkNoShellBuild,
   checkPermissions,
@@ -92,7 +93,7 @@ jobs:
       - uses: actions/checkout@v7
       - run: corepack pnpm validate:workflows:release
   publish:
-    needs: static
+    needs: [guard, static]
     if: \${{ !inputs.resume_from_verify }}
     runs-on: ubuntu-latest
     permissions:
@@ -116,7 +117,7 @@ jobs:
           sbom: false
           tags: type=raw,value=ghcr.io/zee1988/homeweave-ha-app:\${{ needs.guard.outputs.version }}
   verify-image:
-    needs: [publish, static]
+    needs: [guard, publish, static]
     if: \${{ always() && needs.static.result == 'success' && (needs.publish.result == 'success' || (inputs.resume_from_verify && needs.publish.result == 'skipped')) }}
     runs-on: ubuntu-latest
     permissions:
@@ -214,6 +215,7 @@ test('the ci fixture passes every ci rule', () => {
   isGreen(checkPermissions(doc, { packagesWrite: [], contentsWrite: [] }));
   isGreen(checkPinnedActions(doc));
   isGreen(checkJobGraph(doc, EDGES.ci));
+  isGreen(checkNeedsReferences(doc));
   isGreen(checkCiGates(doc));
   isGreen(checkJobsHaveCheckout(doc));
 });
@@ -225,6 +227,7 @@ test('the release fixture passes every release rule', () => {
   isGreen(checkPermissions(doc, { packagesWrite: ['publish'], contentsWrite: ['tag'] }));
   isGreen(checkPinnedActions(doc));
   isGreen(checkJobGraph(doc, EDGES.release));
+  isGreen(checkNeedsReferences(doc));
   isGreen(checkResumePath(doc));
   isGreen(checkBuildPushFlags(doc, 'publish'));
   isGreen(checkNoShellBuild(doc, 'publish'));
@@ -233,6 +236,45 @@ test('the release fixture passes every release rule', () => {
   isGreen(checkStepRuns(doc, 'verify-image', VERIFY_IMAGE_SNIPPETS));
   isGreen(checkStepRuns(doc, 'tag', TAG_SNIPPETS));
   isGreen(checkJobsHaveCheckout(doc));
+});
+
+// The real 2026-10-28 failure: publish read needs.guard.outputs.ref while only
+// depending on static. GitHub expands that to "" -- docker then reports
+// "invalid reference format", naming everything except the actual mistake.
+test('a job reading needs.X.outputs must declare X in needs', () => {
+  const doc = release();
+  doc.jobs.publish.needs = 'static';
+  const problems = checkNeedsReferences(doc);
+  assert.equal(problems.length, 1, `expected exactly one problem, got ${JSON.stringify(problems)}`);
+  assert.match(problems[0], /job "publish" references needs\.guard/);
+  assert.match(problems[0], /does not list "guard" in needs/);
+});
+
+test('needs.X.result counts as a reference, not just needs.X.outputs', () => {
+  const doc = release();
+  doc.jobs['verify-image'].needs = ['publish'];
+  const problems = checkNeedsReferences(doc);
+  assert.ok(problems.length > 0, 'a .result reference to an undeclared job must be reported');
+  assert.ok(
+    problems.some((detail) => /needs\.static/.test(detail)),
+    `expected a needs.static problem, got ${JSON.stringify(problems)}`,
+  );
+});
+
+test('a reference to a job that does not exist is reported separately', () => {
+  const doc = release();
+  doc.jobs.publish.steps.push({ run: 'echo needs.ghost.outputs.ref' });
+  const problems = checkNeedsReferences(doc);
+  assert.equal(problems.length, 1, `expected exactly one problem, got ${JSON.stringify(problems)}`);
+  assert.match(problems[0], /not a job in this workflow/);
+});
+
+test('a job referencing its own outputs is reported as a self-dependency', () => {
+  const doc = release();
+  doc.jobs.static.steps.push({ run: 'echo needs.static.outputs.version' });
+  const problems = checkNeedsReferences(doc);
+  assert.equal(problems.length, 1, `expected exactly one problem, got ${JSON.stringify(problems)}`);
+  assert.match(problems[0], /cannot depend on itself/);
 });
 
 test('the exported constants describe the contract', () => {
