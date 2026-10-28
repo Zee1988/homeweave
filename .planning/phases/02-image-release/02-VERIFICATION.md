@@ -1,87 +1,86 @@
 ---
 phase: 02-image-release
 verified: 2026-10-28
-verdict: partial
-verified_by: orchestrator (gsd-verifier subagent exhausted its context without writing a report)
+verdict: passed
+verified_by: orchestrator, against real GitHub Actions runs (three failing, one green, one deliberate negative)
 ---
 
 # Phase 02 Verification: 镜像构建与发布链路
 
-**结论：`partial`。** 四个计划全部落地，本地可执行的门禁全绿，但 Phase 02 的**目标本身**尚未被证明 —— 它要求"存在一个公开可拉取、多架构、标签与 App `version` 完全一致的预构建镜像"，而本仓库**从未构建过一次镜像，从未运行过一次 CI，GHCR 上不存在任何 tag**。
+**结论：`passed`。** Phase goal 的全部五条判据现在都有**真实运行证据**，不再有结构推断。
 
-本机 `docker`、`bash`、`gh` 全部不可用，且从未 push 到 GitHub。因此本次核验能证明的最强命题是：**发布链路的结构正确、失败路径可辨、门禁闭环**。它不能证明"发布链路能跑通"。
+镜像已发布为 `ghcr.io/zee1988/homeweave-ha-app:0.1.0`，双架构 manifest list 经**匿名拉取**验证，git tag `0.1.0` 指向 `ccbc180`，且「tag 已存在即拒绝覆盖」由一次真实的负向运行证明。
+
+唯一仍然未验证的一项是 **aarch64 镜像的实际运行**（见「未验证清单」），这不属于 Phase 02 的判据范围，但会影响 Phase 03。
+
+## 真实运行记录
+
+| Run | 触发 | 结果 | 结局 |
+|---|---|---|---|
+| 40612028289 | push master | `Install dependencies` exit 1 | 暴露缺陷 1（pnpm 版本漂移） |
+| 40612379906 | push 修复 | **绿**（static gate 25s，9 步全过） | 首个真实 CI 证据 |
+| 40612479283 | release 首跑 | `Tag must still be free` exit 1，`REF:` 为空 | 暴露缺陷 2（needs 缺 guard） |
+| 40614006254 | release 二跑 | `invalid tag "type=raw"` | 暴露缺陷 3（metadata-action 语法） |
+| 40614562404 | release 三跑 | **全绿** — guard 9s / static 24s / publish 3m46s / verify-image 23s / tag 6s | 发布完成 |
+| 40615618681 | 同版本重跑（负向） | 11s 在 guard 失败 | 证明拒绝覆盖 |
 
 ## Phase 目标回溯
 
 > Goal: 存在一个公开可拉取、多架构、标签与 App `version` 完全一致的预构建镜像，"先镜像、后版本号"的发布顺序由 CI 强制而非靠人记得。
 
-| # | Success criterion | 判定 | 证据 |
+| # | Success criterion | 判定 | 证据（run 40614562404，除注明外） |
 |---|---|---|---|
-| 1 | 仓库内单一命令即可构建出可启动的生产镜像；镜像内部检查可证明含构建产物/Prisma Client/迁移，不含 devDeps/源码/sourcemap | **partial** | `Dockerfile` 四阶段，runtime 仅拷 `dist`、`/prod/node_modules`、`prisma`、`package.json`（`Dockerfile:88-116`）。结构由 `pnpm validate:dockerfile` 校验（22 条规则，exit 0）。**镜像从未构建**，`pnpm build:image` 在本机 exit 1 并打印 `image builds are CI-only` —— 这是设计行为，不是"构建通过"。 |
-| 2 | 打 tag 后 GHCR 同时存在 amd64 与 aarch64 及指向两者的 manifest list，标签与 `config.yaml` 的 `version` 一字不差 | **not achieved** | 机制已就位但从未运行。`release.yml` 的 `publish` 用 `platforms: linux/amd64,linux/arm64`、`provenance: false`（布尔）、`sbom: false`（布尔）、`tags: type=raw,value=...`；`verify-image` 调 `assert-manifest-platforms.mjs` 做集合相等断言；`tag` 仅在 `verify-image` 绿后创建。**GHCR 上无任何 tag**，manifest list 不存在。 |
-| 3 | CI 在构建前依次执行元数据/Dockerfile 校验、lint、typecheck、unit，任一步失败即阻断发布（可用一次故意注错的提交证明阻断生效） | **partial** | `ci.yml` 含 7 个门禁 token（`validate:workflows`/`validate:app`/`validate:dockerfile`/`lint`/`typecheck`/`test`/`check:app`），`release.yml` 的 `static` 为 `publish` 的唯一上游。**阻断未被实测**：没有故意注错的提交，也没有一次真实 CI 运行。 |
-| 4 | 镜像层、构建缓存、workflow 文件与仓库中不存在硬编码密钥；密钥扫描与镜像历史检查是发布门禁 | **partial** | `assert-image.sh` 第 7 条 `docker history --no-trunc` 扫 `ghp_`/`github_pat_`/`password=`/`BEGIN ... PRIVATE KEY`，第 8 条扫文件系统 `.env`/`*.pem`/`*.key`；`.dockerignore` 挡 `.env*`/`*.pem`/`*.key`/`secrets`。**从未在镜像上执行**。`docs/23` §7 明确列出未覆盖项（git 历史、仓库 secrets 配置、编码密钥）。 |
+| 1 | 单一命令构建出可启动的生产镜像，内含构建产物/Prisma Client/迁移，不含 devDeps/源码/sourcemap | **verified** | `publish` 真实构建成功（3m46s）。`verify-image` 的 8/8 断言：`1/8 devDependencies absent (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)`、`2/8 sources absent (no /app/src, no *.ts, no *.spec.ts outside node_modules)`、`3/8 no *.map outside node_modules`、`4/8 artifacts present (OK:dist/main.js OK:dist/generated/prisma OK:prisma/migrations)`、`6/8 container started and is still running (startup log line seen, State.Running=true)` |
+| 2 | GHCR 同时存在 amd64 与 aarch64 及指向两者的 manifest list，标签与 `config.yaml` 的 `version` 一字不差 | **verified** | `✓ manifest matches: platforms [linux/amd64, linux/arm64], tag 0.1.0 == config version 0.1.0`。第二次独立确认来自负向 run：`docker manifest inspect` 打印出的 index 同时含 `"architecture": "amd64"` 与 `"architecture": "arm64"` |
+| 3 | CI 在构建前依次执行元数据/Dockerfile 校验、lint、typecheck、unit，任一步失败即阻断 | **verified** | `static gate` 的 7 个门禁在 CI 上真实执行：`✓ workflow checks passed (22 rules)` / `✓ 87 checks passed`（App 元数据）/ `✓ dockerfile checks passed (22 rules)` / `✓ lint passed (32 files)` / `✓ typecheck passed (@homeweave/api)` / unit tests / `check:app`。阻断由两次真实失败证明：publish 失败导致 verify-image 与 tag 跳过；guard 失败导致四个下游 job 全部跳过（run 40615618681，11s） |
+| 4 | 镜像层、构建缓存、workflow 与仓库中不存在硬编码密钥；密钥扫描与历史检查是发布门禁 | **verified** | `7/8 no secret pattern in docker history --no-trunc`、`8/8 no .env / .env.* / *.pem / *.key outside node_modules`。仓库侧：`git ls-files` 122 个文件无 `ghp_`/`gho_`/`sk-`/`PRIVATE KEY` 命中；唯一命中 `.env.example` 是空模板 |
+| 5 | 目标版本 tag 已存在时 CI 拒绝覆盖/复用，要求先发布镜像再提交版本号 | **verified（负向运行）** | run 40615618681：`✗ tag already exists in GHCR; bump config.yaml version`，exit 1，下游 `publish`/`verify-image`/`tag` 全部 skipped。同一脚本的 `--expect exists` 分支服务于 `resume_from_verify` 路径 |
 
 ## Requirement 覆盖
 
 | Requirement | 判定 | 说明 |
 |---|---|---|
-| IMG-01（镜像含构建产物与 Prisma Client） | **partial** | Dockerfile 拷 `dist`（含 `dist/generated/prisma`），`assert-image.sh` 第 4 条断言 `dist/main.js`、`dist/generated/prisma/client.js`、`prisma/migrations/*/migration.sql`。断言未运行。 |
-| IMG-02（不含源码/devDeps/sourcemap） | **partial** | 第 1/2/3 条断言 + `tsconfig` `sourceMap: false`。断言未运行。 |
-| IMG-03（多架构） | **unknown** | `platforms` 已写死双架构；manifest list 从未产出。 |
-| IMG-04（公开可拉） | **unknown** | `verify-image` 用 `docker logout` + 覆写 `~/.docker/config.json` 后匿名 `docker pull`，顺序正确；**从未执行**。GHCR 包可见性仍未设置。 |
-| IMG-05（镜像构建与版本号单一来源） | **verified** | `pnpm build:image` 在本机 exit 1 且信息含 `image builds are CI-only`；版本号只读 `homeweave_app/config.yaml`（`version: "0.1.0"`），读不到即 exit 1；`config.yaml` 的 `image: ghcr.io/zee1988/homeweave-ha-app` 与 workflow tag 规则一致，无 `v` 前缀。 |
-| SEC-03（无硬编码密钥进入镜像） | **partial** | 断言与 `.dockerignore` 就位，未在镜像上执行；`docs/23` §7 已声明未覆盖范围。 |
-| VER-01（CI 门禁） | **verified（结构性）** | `pnpm lint` exit 0（20 rules + 22 rules + 32 files）、`pnpm test` 219/219、`pnpm typecheck` exit 0、`pnpm validate:workflows` exit 0。门禁存在且可阻断合并；**未证明能阻断发布**，因为 release workflow 未运行。 |
+| IMG-01（镜像含构建产物与 Prisma Client） | **verified** | `4/8 artifacts present`，含 `dist/main.js`、`dist/generated/prisma`、`prisma/migrations` |
+| IMG-02（不含源码/devDeps/sourcemap） | **verified** | 断言 1/2/3 全过 |
+| IMG-03（多架构） | **verified** | manifest `[linux/amd64, linux/arm64]`，集合相等断言。**运行**仅 amd64 —— 见未验证清单 |
+| IMG-04（公开可拉） | **verified** | `verify-image` 先 `docker logout` 并覆写 `~/.docker/config.json`，随后匿名 `docker pull` 成功。这是「公开可拉」的定义性证据，比 API 查询更强 |
+| IMG-05（镜像构建与版本号单一来源） | **verified** | `build:image` 本机 exit 1（`image builds are CI-only`）；版本只读 `homeweave_app/config.yaml`；`tags` 现在是 `needs.guard.outputs.ref`，镜像名在 workflow 里没有第二处硬编码 |
+| SEC-03（无硬编码密钥进入镜像） | **verified** | 断言 7/8 |
+| VER-01（CI 门禁） | **verified** | 门禁在 CI 上真实执行并真实阻断过 |
 
-## 本次核验实际执行的命令
+## 三次真实失败暴露的缺陷（本机全部不可见）
 
-| 命令 | 结果 |
-|---|---|
-| `corepack pnpm lint` | exit 0 — `✓ workflow checks passed (20 rules)` / `✓ dockerfile checks passed (22 rules)` / `✓ lint passed (32 files)` |
-| `corepack pnpm typecheck` | exit 0 — `✓ typecheck passed (@homeweave/api)` |
-| `corepack pnpm test` | exit 0 — 219 tests / 219 pass / 0 fail |
-| `corepack pnpm validate:workflows` | exit 0（`--profile all`，两个文件均存在） |
-| `corepack pnpm validate:dockerfile` | exit 0（22 条规则） |
-| `corepack pnpm validate:app` / `check:app` | exit 0 |
-| `corepack pnpm build:image` | **exit 1**，输出含 `image builds are CI-only` —— 预期失败 |
-| `node .planning/tmp/inspect-workflows.mjs`（临时解析脚本，未入库） | 见下 |
+这三个缺陷都**不可能**在本地被发现：本机无 docker、无 bash、且从未有过远端。
 
-解析 `release.yml` 得到的实际值（不是子串匹配）：
+| # | 缺陷 | 逃逸原因 | 修复 |
+|---|---|---|---|
+| 1 | `package.json` 缺 `packageManager`，corepack 解析到 `pnpm@latest`（12.15.0），其 `minimumReleaseAge` 拒绝 5 个 2026-10-27 发布的包 | 本机 corepack 对同一命令解析出 9.15.4，两边都依赖隐式默认值 | `"packageManager": "pnpm@9.15.4"`；不放宽供应链策略 |
+| 2 | `publish` / `verify-image` 读 `needs.guard.outputs` 却**没有在 `needs` 里声明 `guard`**，GitHub 把它展开成空串 | 没有任何本地检查看 `needs` 表达式；`validate-workflows` 的 20 条规则全是字段值与依赖边，不解析表达式引用 | 补 `needs`；新增规则 F13 `checkNeedsReferences`（引用必须已声明、必须存在、不得自引用）+ 4 个用例 |
+| 3 | `with.tags: type=raw,value=...` 是 `docker/metadata-action` 语法，buildx 原样接收后报 `invalid reference format` | **校验器本身在强制这个错误值** —— 原规则要求 `tags` 必须含 `type=raw,value=` | `tags: ${{ needs.guard.outputs.ref }}`；规则反转：禁止 `type=`，要求引用 `needs.guard.outputs.ref` |
 
-- `on` 恰为 `[workflow_dispatch]`；inputs：`version`(required) / `confirm_version`(required) / `resume_from_verify`(boolean, default false)
-- 顶层 `permissions: {contents: read}`
-- job 依赖：`static→[guard]`、`publish→[static]`、`verify-image→[publish, static]`、`tag→[guard, verify-image]`
-- `publish.if = !inputs.resume_from_verify`；`verify-image.if` 表达"publish 成功 **或** (resume 且 publish 被 skipped)"，**不含** `!= 'skipped'`
-- `with.push` / `with.provenance` / `with.sbom` 三者 `typeof` 均为 **boolean**（字符串 `"false"` 不生效，已验证校验器对此有红例）
-- `tag` job 的 checkout `with: {fetch-depth: 0}`；tag 推送前会拒绝移动已存在的 tag
+缺陷 3 是最值得记住的一条：**一个断言了错误事实的校验器，比没有规则更危险**，因为它会给 bug 盖章。同类问题在本次核验中第二次出现（`docs/23` §8 的引擎检查描述），说明「校验器的断言必须能追溯到被验证对象的真实语义」是这个仓库反复踩的坑。
 
-## `assert-image.sh` 的引擎分支（静态判断，非执行）
+## 未验证清单（不得据此声称通过）
 
-`decision=""` 初始化后，`if [ -f ... ]` 仅用于读值；随后 `case "$decision"` 的 `NATIVE_ENGINE` / `RUST_FREE` / `*)` 三分支中 **`*)` 是 fail**（`scripts/ci/assert-image.sh:159-190`）。即：**文件缺失、为空、取值非法一律 exit 1**，不存在"跳过"出口。`RUST_FREE` 打印 `- skipped (RUST_FREE)` 但计为该条通过。
-
-本机无 `bash`，因此这是**代码阅读结论，不是运行结论**。
-
-## 不可本地验证（不得据此声称通过）
-
-1. 镜像构建是否成功（含 `pnpm deploy --prod` 的实际产物形态）。
-2. 容器能否启动、`Nest application successfully started` 是否出现。
-3. `assert-image.sh` 的 8 条断言的实际判定。
-4. 双架构 manifest list 是否产出、是否公开可拉（GHCR 上无 tag）。
-5. workflow 的 YAML 是否被 GitHub Actions 接受（action 版本 `actions/checkout@v7`、`pnpm/action-setup@v6`、`docker/build-push-action@v7` 等来自计划与研究文档，**未向上游核对是否存在**）。
-6. `classifyTagState` 的关键字是否与 GHCR 真实文案吻合（`docs/23` §9 已列为 unknown）。
-7. 阻断是否生效（没有故意注错的提交跑过 CI）。
+1. **aarch64 镜像的实际运行**。`verify-image` 在 `ubuntu-24.04`（amd64）runner 上 `docker run`，拉取并执行的是 amd64 镜像；arm64 只被构建与推送，从未执行。Phase 03 若要在 HAOS（常见为 aarch64）上跑，必须在那台设备上验证启动。
+2. **`classifyTagState` 对 GHCR 其他文案的适应性**。负向运行覆盖了「tag 存在」，`--expect exists`（resume 路径）分支仍未真实触发。
+3. **`resume_from_verify=true` 路径**。设计用于「verify 失败后仅重跑 verify」，从未真实走过。
+4. **长期稳定性**：镜像只有一个版本 `0.1.0`，未验证第二次版本升级（0.1.1）时 guard/verify 的行为。
+5. `docs/23` §7 声明的未覆盖项（git 历史中的密钥、仓库 secrets 配置、编码后的密钥）仍然成立。
 
 ## 核验中发现并已修正的问题
 
 | 问题 | 处理 |
 |---|---|
-| `docs/23` §8 写成「引擎检查是条件性的，只有当 `ENGINE_DECISION` 存在时才断言」，与脚本的 `*)` → fail 矛盾 | 已改写为按取值分支 + 明确「缺失/为空/非法 → exit 1」（`8d6874a`） |
-| `02-04-SUMMARY.md` 的 `key-files.created` 只列了 3 个文件，把本计划新建的 6 个脚本列进 `modified` | 已归位（`8d6874a`） |
-| 编排侧过程：`gsd-verifier` 子代理 30 次工具调用后触及上下文上限，未产出报告；本文件由编排侧重做核验并撰写 | 记录于此，不代表存在独立第三方验证 |
+| `docs/23` §8 写成「引擎检查是条件性的」，与脚本 `*)` → fail 矛盾 | 已改写（`8d6874a`） |
+| `02-04-SUMMARY.md` 的 `key-files.created` 只列 3 个文件 | 已归位（`8d6874a`） |
+| 校验器缺 `needs` 表达式规则，且强制 `type=raw,value=` | 已修（规则 F13 新增；tags 规则反转） |
+| 编排侧过程：`gsd-executor` 两次、`gsd-verifier` 一次触及上下文上限 | 缺口由编排侧复验补账，未放宽任何断言 |
 
 ## 判定
 
-Phase 02 **不能标记为完成**。计划层面 4/4 已交付，但 Phase goal 的第二、三条 success criterion 需要**一次真实的 CI 运行 + GHCR 上的 manifest** 才能成立。在首次发布实际跑通之前，正确状态是：
+Phase 02 **完成**。判据 1-5 全部由真实运行证明，其中判据 5 由负向运行证明。
 
-> 发布链路已构建、结构自洽、门禁闭环；镜像与 CI 从未运行。首次发布必须有人值守，预期会在 `verify-image` 的匿名 pull 处因 GHCR 包默认 private 而失败（`docs/23` §2 → §4）。
+发布产物：`ghcr.io/zee1988/homeweave-ha-app:0.1.0`，manifest `[linux/amd64, linux/arm64]`，匿名可拉，git tag `0.1.0` → `ccbc180`。
+
+进入 Phase 03 前必须先读「未验证清单」第 1 条：**arm64 从未运行过**。

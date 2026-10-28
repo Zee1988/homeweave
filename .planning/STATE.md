@@ -3,15 +3,15 @@ gsd_state_version: "1.0"
 milestone: v1.0
 current_phase: 02
 current_phase_name: 镜像构建与发布链路
-status: verifying
-stopped_at: Phase 02 wave 4 complete — all 4 plans executed; phase verdict is partial (image never built, CI never ran)
-last_updated: "2026-10-28T00:46:00.000Z"
+status: complete
+stopped_at: Phase 02 complete — image 0.1.0 published to GHCR, manifest [amd64,arm64] anonymously pullable, tag 0.1.0 pushed by CI
+last_updated: "2026-10-28T01:40:00.000Z"
 last_activity: 2026-10-28
-last_activity_desc: 02-04 landed — ci.yml + release.yml + validate-workflows (20 rules / 55 cases), 219 tests green, image release is CI-only
-state_head: 8d6874a563a0d15c8ee6547573c807a64fc9e2d1
+last_activity_desc: Phase 02 verified with real runs — three genuine CI defects found and fixed (pnpm drift, missing needs edge, metadata-action tag syntax); release run 40614562404 green end to end
+state_head: ccbc180
 progress:
   total_phases: 7
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 10
   completed_plans: 10
 ---
@@ -23,33 +23,34 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-27)
 
 **Core value:** HAOS 用户添加仓库 → 安装 → 启动 → 在 HA 侧边栏打开一个能跑的 HomeWeave。
-**Current focus:** Phase 02 — 镜像构建与发布链路
+**Current focus:** Phase 03 — 运行时骨架（待 discuss）
 
 ## Current Position
 
-Phase: 02 (镜像构建与发布链路) — VERIFYING (partial)
-Plan: 4 of 4（全部计划已执行；阶段结论为 partial）
-Status: wave 4 complete — **镜像从未构建，CI 从未运行，GHCR 无任何 tag**（本机无 docker、无 bash；发布链路是 CI-only）
-Last activity: 2026-10-28 — 02-04 landed; ci.yml/release.yml 与 `validate:workflows` 已闭环，首次真实构建待 CI 首跑
+Phase: 02 (镜像构建与发布链路) — **COMPLETE**
+Plan: 4 of 4
+Status: 镜像已发布 —— `ghcr.io/zee1988/homeweave-ha-app:0.1.0`，manifest `[linux/amd64, linux/arm64]`，匿名可拉，git tag `0.1.0` → `ccbc180`（由 CI 推送）
+Last activity: 2026-10-28 — release run 40614562404 全链路绿；三次真实失败各自暴露一个本机不可见的缺陷并已修复
 
-Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 10/10 plans executed)
+Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 10/10 plans executed)
 
 ## Performance Metrics
 
 **Velocity:**
 - Total plans completed: 10
 - Average duration: ~33 min
-- Total execution time: ~5.5 hours
+- Total execution time: ~7.5 hours（含 Phase 02 的 CI 首跑与缺陷修复 ~2 h，不属于任何计划）
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 6 | ~0.4 h | ~7 min |
-| 02 | 4 | ~5.1 h | ~77 min |
+| 02 | 4 | ~7.1 h | ~107 min |
 
 **Recent Trend:**
 - Last 4 plans: 02-01 (~45 min), 02-02 (~60 min), 02-03 (~50 min), 02-04 (~150 min)
+- Phase 02 额外投入 ~2 h 在「首次真实 CI 运行」上：三次真实失败各暴露一个本机绝无可能发现的缺陷（pnpm 版本漂移、`needs` 缺边、metadata-action 语法），另有两次校验器缺口
 - Trend: 上升（Phase 02 计划均为跨文件 + 门禁接线；02-04 额外被两次执行器上下文上限打断，由编排侧复验补账）
 
 *Updated after each plan completion*
@@ -99,6 +100,11 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 02]: workflow 校验器同时被单测（fixture 全绿 + 单点变异必红）与 lint 门禁调用；fixture 自身必须是全绿基线，否则红例无法归因
 - [Phase 02]: `verify-image` 用匿名 `docker pull` 作为「公开可拉」的唯一证据，因此 GHCR 包若为 private 首次发布会在此步失败 —— 这是有意暴露的边界，不用 `--allow-missing-package` 把它抹平
 - [Phase 02]: `tag` 步骤需要 `fetch-depth: 0`（默认浅克隆拿不到历史 tag）；发布顺序门禁依赖历史 tag 的存在性判断
+- [Phase 02]: `package.json` 必须显式声明 `packageManager`。缺它时 corepack 解析 `pnpm@latest`，而本机与 CI 的隐式默认值不同（本机 9.15.4、CI 12.15.0），同一命令在两处得到不同版本；pnpm 12 的 `minimumReleaseAge` 随后拒绝了 5 个当日发布的包
+- [Phase 02]: 任何 `needs.X.outputs` 引用的 job 必须把 X 列进自己的 `needs`。GitHub 不报错，而是展开成空串，错误在下游以完全不相干的形态出现（`docker manifest inspect ""` → `invalid reference format`）。规则 F13 已覆盖声明性、存在性与自引用三种情况
+- [Phase 02]: `build-push-action` 的 `tags` 只接受镜像引用；`type=raw,value=...` 是 `docker/metadata-action` 语法，会被原样交给 buildx 并被拒。`tags: needs.guard.outputs.ref` 同时消除镜像名的第二处硬编码
+- [Phase 02]: **校验器断言错误事实比没有规则更危险**。原 `checkBuildPushFlags` 强制 `tags` 含 `type=raw,value=`，等于给这个 bug 盖章；同类问题第二次出现在 `docs/23` §8。新增/修改规则时必须能追溯到被验证对象的真实语义，不能凭记忆写「应该长这样」
+- [Phase 02]: 从 public 仓库 workflow 推送的 GHCR 包实测可直接匿名拉取，因此原预期「首次发布在 verify-image 失败」没有发生；不需要手动改包可见性。该结论只在 `verify-image` 的匿名 pull 上成立，未用 API 复核（token 缺 `read:packages`）
 
 ### Pending Todos
 
@@ -108,9 +114,10 @@ None yet.
 
 - [Phase 1] GHCR `owner`、Git 仓库 URL、`maintainer`、最低 HA / Supervisor 版本均为占位符，必须在 Phase 1 落盘为显式决策，不得沿用 `<owner>` 模板值
 - [All] 无真实 Home Assistant OS 环境：所有"安装/升级成功"结论只能在静态或容器模拟层给出，HAOS 实机项一律记录为未验证
-- [Phase 2] 本机无 Docker：镜像能否构建、多架构 manifest 是否正确、arm64 容器内 Prisma 查询是否成功，全部只能由 02-03/02-04 与 CI 给出；`RUST_FREE` 只证明「不存在平台相关二进制」，不证明「arm64 容器已跑通」
-- [Phase 2] **镜像从未构建、CI 从未运行、GHCR 无任何 tag**：`ci.yml`/`release.yml` 只经过静态校验（20 条 workflow 规则 + 55 用例）。02-VERIFICATION.md 判定为 `partial`，在首次真实 CI 运行前不得宣称 Phase 2 通过
-- [Phase 2] 首次发布预期在 `verify-image` 的匿名 pull 处失败（GHCR 包默认 private）；处理方式是把包改为 public 后重跑，而不是给匿名拉取加豁免
+- [Phase 2] 本机无 Docker：镜像能否构建、多架构 manifest 是否正确，只能由 CI 给出；`RUST_FREE` 只证明「不存在平台相关二进制」，不证明「arm64 容器已跑通」
+- [Phase 2] **arm64 镜像从未运行过**：`verify-image` 在 amd64 runner 上 `docker run`，拉取的是 amd64 镜像；arm64 只被构建与推送。Phase 03 在 HAOS（常见 aarch64）上的启动必须在真机验证，不能用 `verify-image` 的绿来代替
+- [Phase 2] `resume_from_verify=true` 路径（`check-tag-free --expect exists`）从未真实触发；负向运行只覆盖了「tag 已存在 → 拒绝」这一支
+- [Phase 2] 只有一个发布版本 `0.1.0`，未验证 0.1.1 的升级行为
 - [Phase 5] Web UI 载体未定，可能影响镜像体积与 Phase 2 的构建产物边界
 
 ## Deferred Items
@@ -123,14 +130,15 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T00:46:00.000Z
-Stopped at: Completed 02-04-PLAN.md (phase 02 wave 4 done, 4/4 plans); phase verdict = partial
+Last session: 2026-10-28T01:40:00.000Z
+Stopped at: Phase 02 complete — all five success criteria proven by real runs, image 0.1.0 published
 Resume file: `.planning/phases/02-image-release/02-VERIFICATION.md`
 
-**Next action:** Phase 2 剩余的是**不可在本机完成**的部分，按顺序：
+**Next action:** `/gsd-discuss-phase 3`（运行时骨架）。
 
-1. 把 `release.yml` 的 `workflow_dispatch` 跑一次（`resume_from_verify=false`），确认 `static → guard → publish → verify-image → tag` 全链路；预期首次在 `verify-image` 的匿名 `docker pull` 处失败（GHCR 包 private）。
-2. 失败后把 GHCR 包改为 public 并重跑，直到匿名 pull 成功、manifest 同时列出 `amd64` 与 `arm64`，再勾选 Phase 2 为完成。
-3. 之后才讨论 Phase 3（运行时骨架）：`/gsd-discuss-phase 3`。
+进入 Phase 3 前必须先接受这两条事实：
 
-未验证清单与逐条判据见 02-VERIFICATION.md，不要在没有 CI 运行记录的情况下把任何一条改写成「通过」。
+1. **arm64 从未运行过**。`verify-image` 只执行了 amd64 镜像；HAOS 常见为 aarch64，因此「镜像在真实设备上能启动」仍是 Phase 03 的待验证项，不是已完成的结论。
+2. Phase 1 的 HAOS 实机项同样未验证。Phase 03 的第一件事应是把发布出的 `0.1.0` 装到真实 HAOS 上，确认仓库可添加、App 可安装、容器可启动 —— 这是前两个阶段所有静态结论的第一次合流验收。
+
+发布链路的运维细节见 `docs/23_IMAGE_RELEASE_RUNBOOK.md`；再次发布只需 `gh workflow run release.yml -f version=<v> -f confirm_version=<v>`。

@@ -6,12 +6,12 @@
     {
       "number": "1",
       "name": "App 元数据与仓库可识别性",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "number": "2",
       "name": "镜像构建与发布链路",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "number": "3",
@@ -40,9 +40,9 @@
     }
   ],
   "next": {
-    "command": "/gsd-progress --next",
-    "label": "Advance to the next step",
-    "reason": "Phase 2 of 7 · 4/4 plans executed, verdict partial — first real CI run still pending"
+    "command": "/gsd-discuss-phase 3",
+    "label": "Discuss phase 3",
+    "reason": "Phase 2 of 7 complete · image 0.1.0 published and anonymously pullable · arm64 still never executed"
   },
-  "updated_at": "2026-10-28T00:47:00.000Z"
+  "updated_at": "2026-10-28T01:40:00.000Z"
 }
