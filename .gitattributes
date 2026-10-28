@@ -1,0 +1,17 @@
+# Line-ending policy for files whose bytes matter outside Git.
+#
+# `scripts/ci/assert-image.sh` runs under `sh` inside the image and on Linux CI
+# runners. A CRLF checkout turns its shebang into `#!/bin/sh\r`, which fails with
+# "bad interpreter: No such file or directory" — and it fails only in CI, because
+# nothing on a Windows host ever executes the file. `core.autocrlf=true` (the
+# Windows default) does exactly that on checkout, so these paths are pinned.
+#
+# The Dockerfile is pinned for the same class of reason: a trailing `\r` after a
+# line-continuation `\` turns the next line into an argument instead of a command.
+# Docker tolerates CRLF in some paths, but relying on that tolerance is not a plan.
+#
+# Deliberately narrow: a global `* text=auto` would renormalise every file in the
+# repository and bury this rule in a whitespace-only diff.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.mjs text eol=lf
