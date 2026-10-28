@@ -112,7 +112,13 @@ docker pull ghcr.io/zee1988/homeweave-ha-app:<version>
 - `docker history --no-trunc <ref>` 断言镜像历史中无 `ghp_` / `github_pat_` / `password=` / `BEGIN ... PRIVATE KEY` 等明文痕迹；
 - 镜像文件系统中的 `.env` / `.env.*` / `*.pem` / `*.key` 断言（排除 `node_modules`）；
 - `.dockerignore` 必须排除 `.env*`、`*.pem`、`*.key`、`secrets`；
-- 镜像不含 devDependencies、不含源码 / `*.spec.ts` / `*.map`（IMG-01 / IMG-02）。
+- 镜像不含 devDependencies、不含源码 / `*.spec.ts` / `*.map`（IMG-01 / IMG-02）；
+- `/health/live` 在运行中的容器内返回 200（`assert-image.sh` 第 9 项）。
+
+运行时行为另由两个脚本在 `verify-image` 的同一 job 内断言（03-05）：
+
+- `scripts/ci/assert-failfast.sh`：以 `DATABASE_URL=file:/nonexistent-dir/x.db` 与 `PORT=abc` 启动镜像，要求退出码为 **78** 且日志含 `startup_failed` 与对应 `reason`（`dir_missing` / `invalid_port`）。它同时证明镜像内 `ENV DATABASE_URL` 可被覆盖——若覆盖失效，第一个用例会正常启动而不是失败。
+- `scripts/ci/assert-shutdown.sh`：等到 `/health/live` 返回 200 后执行 `docker stop`，要求退出码 0、日志顺序为 `stop accepting new requests` → `prisma disconnected`、无 `shutdown_forced`、耗时低于 10 s。这是唯一在真实 `SIGTERM` 下验证关闭链路的地方：Windows 上 `process.kill(pid,'SIGTERM')` 直接终止进程，unit/dist 测试只能通过事件派发覆盖同一套监听器。
 
 **未覆盖，必须知道**：
 

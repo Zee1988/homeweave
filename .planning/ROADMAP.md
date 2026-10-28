@@ -108,7 +108,7 @@
 - [x] 03-02-PLAN.md — 探针语义收窄与 watchdog 生成链（wave 1，RT-01）
 - [x] 03-03-PLAN.md — 日志脱敏、requestId 串联与脱敏 E2E（wave 2，RT-04）
 - [x] 03-04-PLAN.md — `/health/ready` 的数据库/迁移/磁盘检查（wave 2，RT-02 部分交付）
-- [ ] 03-05-PLAN.md — 启动 fail-fast、优雅关闭与镜像断言 8→9（wave 3，RT-03、RT-05）
+- [x] 03-05-PLAN.md — 启动 fail-fast、优雅关闭与镜像断言 8→9（wave 3，RT-03、RT-05）
 
 **规划期修订**（见 03-RESEARCH.md §14 与 03-VALIDATION.md）：
 - pino 实际为 **10.x**（CONTEXT 写的 v9 不成立）；`redact` 只支持静态路径，脱敏必须自写递归 `sanitize()`。
