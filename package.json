@@ -17,7 +17,7 @@
     "validate:workflows:ci": "node scripts/validate-workflows.mjs --profile ci",
     "validate:workflows:release": "node scripts/validate-workflows.mjs --profile release",
     "build:image": "node scripts/build-image.mjs",
-    "lint": "node scripts/validate-dockerfile.mjs && node scripts/lint-workspace.mjs",
+    "lint": "node scripts/validate-workflows.mjs --profile all && node scripts/validate-dockerfile.mjs && node scripts/lint-workspace.mjs",
     "typecheck": "node scripts/typecheck-workspace.mjs",
     "test": "corepack pnpm@9.15.4 run test:app && corepack pnpm@9.15.4 -r --if-present test"
   },

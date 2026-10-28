@@ -72,7 +72,7 @@
 | `corepack pnpm check:app` | 校验元数据与配置是否同步（只读，不写文件） |
 | `corepack pnpm validate:app` | 按 HA App 规则校验配置与元数据 |
 | `corepack pnpm test:app` | `check:app` + 全部脚本单元测试 |
-| `corepack pnpm lint` | 全仓库零依赖 lint：`*.mjs` 语法、`*.yaml`、`*.json` |
+| `corepack pnpm lint` | `validate:workflows`（workflow 结构 20 条规则）+ `validate:dockerfile` + 全仓库零依赖 lint（`*.mjs` 语法、`*.yaml`、`*.json`） |
 | `corepack pnpm typecheck` | 递归执行各包 `typecheck`；`apps/api` 真跑 `tsc --noEmit`，无包声明时判失败 |
 | `corepack pnpm test` | `test:app` + 递归执行各包 `test` |
 | `corepack pnpm --filter @homeweave/api build` | 编译后端到 `apps/api/dist`（`sourceMap` 关闭，镜像内无 `.map`） |
