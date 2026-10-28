@@ -5,9 +5,11 @@
   "description": "HomeWeave API. This version is independent of the HA App version in homeweave_app/config.yaml and never feeds the image tag.",
   "main": "dist/main.js",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "db:generate": "prisma generate",
+    "db:migrate:deploy": "prisma migrate deploy"
   },
   "dependencies": {
     "@nestjs/common": "^12.3.0",

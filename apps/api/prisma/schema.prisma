@@ -1,0 +1,37 @@
+// HomeWeave API — Prisma schema
+//
+// Scope note: this schema intentionally contains only ONE low-commitment generic
+// table. Real business models (sessions, devices, policies, audit log, ...) are
+// owned by Phase 04 (data layer design). Do not grow this file before that
+// decision lands — migrations created here must stay additive-friendly.
+//
+// Runtime contract (see docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md:105):
+//   - SQLite file lives on the Home Assistant App persistent volume (/data).
+//   - Container: DATABASE_URL=file:/data/homeweave.db
+//   - Local dev: DATABASE_URL=file:./data/app.db (default in .env.example)
+//
+// Prisma 7 facts that shape this file (verified against 7.10.1, see
+// 02-02-SUMMARY.md):
+//   1. `datasource.url` is gone — the connection URL lives in ../prisma.config.ts.
+//   2. `generator prisma-client-js` still validates but generates NOTHING.
+//      Only `generator prisma-client` with an explicit `output` produces code.
+//   3. There is no native query engine any more (WASM query compiler), so
+//      `binaryTargets` is intentionally absent. The cross-arch decision and its
+//      evidence live in ./ENGINE_DECISION + scripts/probe-prisma-engine.mjs.
+
+datasource db {
+  provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client"
+  // Generated TypeScript is compiled by tsc into dist/, so the image only needs
+  // dist (plan 02-03). Gitignored: it is derived from this file.
+  output   = "../src/generated/prisma"
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
