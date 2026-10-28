@@ -102,13 +102,19 @@
   3. 发送 `SIGTERM` 后进程在限定时间内自行退出：日志显示停止接收新请求并关闭连接与 Prisma，无被强制 SIGKILL 的记录。
   4. 走过一条带 `Authorization` 头与 token 的请求后，结构化日志中该字段已被脱敏为掩码，且每条日志都带可用于串联的 requestId。
   5. `DATABASE_URL` 指向不可写目录时进程 fail-fast 退出并给出明确错误，而不是带着半可用状态继续服务。
-**Plans**: TBD
+**Plans**: 5 plans（3 waves）
 
-计划切片（供 plan-phase 细化，预期 4 plans）：
-- NestJS 最小运行骨架 + 配置加载（含 App `options` 读取路径）
-- `health/live` 与 `health/ready`（含数据库读写与迁移版本检查）
-- 结构化日志 + 递归脱敏 + requestId 串联
-- 优雅关闭与启动期 fail-fast 校验（端口、数据目录、必需配置）
+- [ ] 03-01-PLAN.md — tracer 切片：依赖、配置解析、Prisma adapter 与 `/health/live`（wave 1，RT-01）
+- [ ] 03-02-PLAN.md — 探针语义收窄与 watchdog 生成链（wave 1，RT-01）
+- [ ] 03-03-PLAN.md — 日志脱敏、requestId 串联与脱敏 E2E（wave 2，RT-04）
+- [ ] 03-04-PLAN.md — `/health/ready` 的数据库/迁移/磁盘检查（wave 2，RT-02 部分交付）
+- [ ] 03-05-PLAN.md — 启动 fail-fast、优雅关闭与镜像断言 8→9（wave 3，RT-03、RT-05）
+
+**规划期修订**（见 03-RESEARCH.md §14 与 03-VALIDATION.md）：
+- pino 实际为 **10.x**（CONTEXT 写的 v9 不成立）；`redact` 只支持静态路径，脱敏必须自写递归 `sanitize()`。
+- `better-sqlite3@13` 内嵌含 `linux-arm64` 的 N-API prebuild，D-05b 的工具链回退前提为假 → 改为构建期 prebuild 存在性断言。
+- HA App `watchdog` 是 URL 字符串（`http://[HOST]:[PORT:8099]/health/live`），由 `app-metadata.json` → `generate-app-metadata.mjs` 生成；端口变量是 `PORT=8099`，不是 `APP_PORT`。
+- **RT-02 部分交付（D-06 显式偏差）**：migrations 只作为 `checks.migrations` 诊断字段，不参与 `/health/ready` 状态码；在补齐前不得宣称 SC-2 已完整覆盖。
 
 **验证类**: 容器模拟（探针、`docker stop`、日志脱敏断言）+ 静态（脱敏与校验单测）。
 
@@ -206,7 +212,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7
 |-------|----------------|--------|-----------|
 | 1. App 元数据与仓库可识别性 | 6/6 | Complete（静态自证，HAOS 实机未验证） | - |
 | 2. 镜像构建与发布链路 | 4/4 | Complete（run 40614562404 全绿） | - |
-| 3. 运行时骨架 | 0/TBD | Not started | - |
+| 3. 运行时骨架 | 0/5（3 waves） | Planned | - |
 | 4. 数据持久化与受控迁移 | 0/TBD | Not started | - |
 | 5. Ingress Web UI 与认证边界 | 0/TBD | Not started | - |
 | 6. Home Assistant 连接与自检 | 0/TBD | Not started | - |

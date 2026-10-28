@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 02
-current_phase_name: 镜像构建与发布链路
-status: complete
-stopped_at: Phase 3 context gathered
-last_updated: "2026-10-28T02:55:32.495Z"
+current_phase: 03
+current_phase_name: 运行时骨架
+status: planned
+stopped_at: Phase 3 plans written (5 plans / 3 waves)
+last_updated: "2026-10-28T00:00:00.000Z"
 last_activity: 2026-10-28
-last_activity_desc: Phase 02 verified with real runs — three genuine CI defects found and fixed (pnpm drift, missing needs edge, metadata-action tag syntax); release run 40614562404 green end to end
-state_head: 29302272e3f9ddb8ff40fa16b3badec2c2885716
+last_activity_desc: Phase 03 planned — research/validation/patterns plus 5 plans in 3 waves; six CONTEXT premises corrected (pino 10.x, self-written redaction, arm64 prebuild present, watchdog URL syntax, PORT not APP_PORT, D-06 partial for RT-02)
+state_head: f1442cd
 progress:
   total_phases: 7
   completed_phases: 2
-  total_plans: 10
+  total_plans: 15
   completed_plans: 10
 ---
 
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-27)
 
 **Core value:** HAOS 用户添加仓库 → 安装 → 启动 → 在 HA 侧边栏打开一个能跑的 HomeWeave。
-**Current focus:** Phase 03 — 运行时骨架（待 discuss）
+**Current focus:** Phase 03 — 运行时骨架（PLANNED，待执行）
 
 ## Current Position
 
-Phase: 02 (镜像构建与发布链路) — **COMPLETE**
-Plan: 4 of 4
-Status: 镜像已发布 —— `ghcr.io/zee1988/homeweave-ha-app:0.1.0`，manifest `[linux/amd64, linux/arm64]`，匿名可拉，git tag `0.1.0` → `ccbc180`（由 CI 推送）
-Last activity: 2026-10-28 — release run 40614562404 全链路绿；三次真实失败各自暴露一个本机不可见的缺陷并已修复
+Phase: 03 (运行时骨架) — **PLANNED**
+Plan: 0 of 5（3 waves）
+Status: 5 个计划已写入，结构校验通过（tasks == automated == fails_when == acceptance == read_first）；wave 1 = 01/02，wave 2 = 03/04，wave 3 = 05
+Last activity: 2026-10-28 — Phase 03 规划完成；研究阶段推翻 6 条 CONTEXT 前提，RT-02 以显式偏差部分交付
 
-Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 10/10 plans executed)
+Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 10/15 plans executed)
 
 ## Performance Metrics
 
@@ -105,6 +105,14 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 02]: `build-push-action` 的 `tags` 只接受镜像引用；`type=raw,value=...` 是 `docker/metadata-action` 语法，会被原样交给 buildx 并被拒。`tags: needs.guard.outputs.ref` 同时消除镜像名的第二处硬编码
 - [Phase 02]: **校验器断言错误事实比没有规则更危险**。原 `checkBuildPushFlags` 强制 `tags` 含 `type=raw,value=`，等于给这个 bug 盖章；同类问题第二次出现在 `docs/23` §8。新增/修改规则时必须能追溯到被验证对象的真实语义，不能凭记忆写「应该长这样」
 - [Phase 02]: 从 public 仓库 workflow 推送的 GHCR 包实测可直接匿名拉取，因此原预期「首次发布在 verify-image 失败」没有发生；不需要手动改包可见性。该结论只在 `verify-image` 的匿名 pull 上成立，未用 API 复核（token 缺 `read:packages`）
+- [Phase 03]: pino 现行为 **10.x**，CONTEXT 记的 v9 不成立；`LoggerService` 适配必须自己实现 `log/error/warn/debug/verbose/fatal`，`bufferLogs: true` 必须先于 `app.useLogger()` 之前的任何 provider 实例化
+- [Phase 03]: pino 的 `redact` 只支持静态路径（`a.b.c` / `a[*].b`），无法按键名模式或值模式脱敏；因此脱敏是自写的纯函数 `sanitize()`（键名黑名单 + 值模式 + 循环引用与深度上限），不依赖 pino 配置
+- [Phase 03]: `better-sqlite3@13.0.3` 自带 N-API prebuild 且**包含 linux-arm64**，D-05b 的「arm64 需要工具链回退编译」前提为假 → 改为 Dockerfile 构建期断言 `prebuilds/linux-<arch>.node` 存在，缺失即失败
+- [Phase 03]: HA App 的 `watchdog` 是 URL 字符串（`http://[HOST]:[PORT:8099]/health/live`），不是命令探针；它同样必须经 `app-metadata.json` → `generate-app-metadata.mjs` 生成，`assertConsumedKeys` 会拒绝未消费键
+- [Phase 03]: App `options` 里的端口变量是 `PORT=8099`，不是 `APP_PORT`；`DATABASE_URL` 默认 `file:/data/homeweave.db` 由镜像 `ENV` 与代码默认值双保险
+- [Phase 03]: **D-06 显式偏差**：migrations 只作为 `/health/ready` 的 `checks.migrations` 诊断字段，不参与状态码 → RT-02 为部分交付，在补齐前禁止宣称 SC-2 完整覆盖
+- [Phase 03]: 退出码语义固定为：配置/参数错误 **78**（EX_CONFIG），其他启动失败 **1**，正常信号关闭 **0**；这些是 Supervisor 唯一可读信号
+- [Phase 03]: 关闭预算 8s 小于 `docker stop` 的 10s SIGKILL 窗口；用 `enableShutdownHooks(Object.values(ShutdownSignal), { useProcessExit: true })`，不手写 `process.on('SIGTERM')`
 
 ### Pending Todos
 
@@ -118,6 +126,8 @@ None yet.
 - [Phase 2] **arm64 镜像从未运行过**：`verify-image` 在 amd64 runner 上 `docker run`，拉取的是 amd64 镜像；arm64 只被构建与推送。Phase 03 在 HAOS（常见 aarch64）上的启动必须在真机验证，不能用 `verify-image` 的绿来代替
 - [Phase 2] `resume_from_verify=true` 路径（`check-tag-free --expect exists`）从未真实触发；负向运行只覆盖了「tag 已存在 → 拒绝」这一支
 - [Phase 2] 只有一个发布版本 `0.1.0`，未验证 0.1.1 的升级行为
+- [Phase 3] **`/data` 可写性未验证（A2）**：`Dockerfile` 为 `USER node`，Supervisor 挂载的 `/data` 常属 root；真机上可能启动即 exit 78，而本地与 CI 全绿。03-VALIDATION.md 已列为 Manual-Only 项，必须真机确认
+- [Phase 3] `/health/ready` 的 migrations 维度只做诊断（D-06 偏差），RT-02 部分交付；不得据此宣称 SC-2 完整覆盖
 - [Phase 5] Web UI 载体未定，可能影响镜像体积与 Phase 2 的构建产物边界
 
 ## Deferred Items
@@ -130,15 +140,16 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T02:55:32.151Z
-Stopped at: Phase 3 context gathered
-Resume file: .planning/phases/03-runtime/03-CONTEXT.md
+Last session: 2026-10-28
+Stopped at: Phase 3 plans written (5 plans / 3 waves)
+Resume file: .planning/phases/03-runtime/03-01-PLAN.md
 
-**Next action:** `/gsd-discuss-phase 3`（运行时骨架）。
+**Next action:** `/gsd-execute-phase 3`（wave 1：03-01 与 03-02 并行）。
 
-进入 Phase 3 前必须先接受这两条事实：
+执行前必须先接受这三条事实：
 
 1. **arm64 从未运行过**。`verify-image` 只执行了 amd64 镜像；HAOS 常见为 aarch64，因此「镜像在真实设备上能启动」仍是 Phase 03 的待验证项，不是已完成的结论。
-2. Phase 1 的 HAOS 实机项同样未验证。Phase 03 的第一件事应是把发布出的 `0.1.0` 装到真实 HAOS 上，确认仓库可添加、App 可安装、容器可启动 —— 这是前两个阶段所有静态结论的第一次合流验收。
+2. Phase 1 的 HAOS 实机项同样未验证。前两个阶段的静态结论尚未合流为一次真机验收。
+3. **`/data` 归属未知（研究期 A2，最大残余风险）**：`Dockerfile` 是 `USER node`，而 Supervisor 挂载的 `/data` 常属 root；若真机如此，进程会启动即 exit 78 而本地全绿。03-05 已把它列入「残余风险」，要求真机确认后再决定是否改权限，禁止未验证就把 `USER node` 删掉。
 
 发布链路的运维细节见 `docs/23_IMAGE_RELEASE_RUNBOOK.md`；再次发布只需 `gh workflow run release.yml -f version=<v> -f confirm_version=<v>`。
