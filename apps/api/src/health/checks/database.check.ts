@@ -38,6 +38,19 @@ export interface WriteProbeState {
   reason?: WriteProbeReason;
 }
 
+/**
+ * What the `STARTUP_PROBE` provider resolves to: mutable state plus a Nest lifecycle hook.
+ *
+ * A plain object rather than an `@Injectable()` class so this file stays free of
+ * `@nestjs/*` — `--experimental-strip-types` cannot load decorators or the metadata they
+ * need, and these reason mappings are exactly what the unit tests must pin down. Nest
+ * calls `onModuleInit` on factory-provided instances just like class instances.
+ */
+export interface StartupProbeHolder {
+  state: WriteProbeState;
+  onModuleInit(): Promise<void>;
+}
+
 export interface DatabaseCheckResult {
   status: 'ok' | 'fail';
   /** A readable phrase, never an error message, a path, or a driver's own text
