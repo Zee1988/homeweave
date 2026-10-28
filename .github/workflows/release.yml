@@ -234,7 +234,11 @@ jobs:
           # then fails. It is one or the other, not both.
           provenance: false
           sbom: false
-          tags: 'type=raw,value=ghcr.io/zee1988/homeweave-ha-app:${{ needs.guard.outputs.version }}'
+          # A tag reference, not `type=raw,value=...`: the latter is
+          # docker/metadata-action syntax and buildx rejects it as an invalid
+          # reference format. guard's `ref` is already `image:version`, so the
+          # image name is not repeated here either.
+          tags: ${{ needs.guard.outputs.ref }}
 
   verify-image:
     name: verify-image (anonymous pull + content + manifest)
