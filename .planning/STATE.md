@@ -4,11 +4,11 @@ milestone: v1.0
 current_phase: 02
 current_phase_name: 镜像构建与发布链路
 status: complete
-stopped_at: Phase 02 complete — image 0.1.0 published to GHCR, manifest [amd64,arm64] anonymously pullable, tag 0.1.0 pushed by CI
-last_updated: "2026-10-28T01:40:00.000Z"
+stopped_at: Phase 3 context gathered
+last_updated: "2026-10-28T02:55:32.495Z"
 last_activity: 2026-10-28
 last_activity_desc: Phase 02 verified with real runs — three genuine CI defects found and fixed (pnpm drift, missing needs edge, metadata-action tag syntax); release run 40614562404 green end to end
-state_head: ccbc180
+state_head: 29302272e3f9ddb8ff40fa16b3badec2c2885716
 progress:
   total_phases: 7
   completed_phases: 2
@@ -130,9 +130,9 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T01:40:00.000Z
-Stopped at: Phase 02 complete — all five success criteria proven by real runs, image 0.1.0 published
-Resume file: `.planning/phases/02-image-release/02-VERIFICATION.md`
+Last session: 2026-10-28T02:55:32.151Z
+Stopped at: Phase 3 context gathered
+Resume file: .planning/phases/03-runtime/03-CONTEXT.md
 
 **Next action:** `/gsd-discuss-phase 3`（运行时骨架）。
 
