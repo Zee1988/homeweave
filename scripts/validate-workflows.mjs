@@ -57,8 +57,10 @@ export const EDGES = {
   ci: { static: [] },
   release: {
     static: ['guard'],
-    publish: ['static'],
-    'verify-image': ['publish', 'static'],
+    // publish and verify-image read needs.guard.outputs, so the edge is part of
+    // the graph rather than an incidental detail of one expression.
+    publish: ['guard', 'static'],
+    'verify-image': ['guard', 'publish', 'static'],
     tag: ['guard', 'verify-image'],
   },
 };
@@ -513,12 +515,25 @@ export function checkBuildPushFlags(doc, jobName = 'publish') {
     problems.push(`with.tags must be a string or list, got ${describe(rawTags)}`);
   } else {
     const joined = tagList.join('\n');
-    if (!joined.includes('type=raw,value=')) {
+
+    // `type=...` is docker/metadata-action syntax. build-push-action does not
+    // parse it -- it hands the string to buildx verbatim, which rejects it as an
+    // invalid reference format. The 2026-10-28 release run died exactly there.
+    // An earlier version of this check REQUIRED type=raw,value=, which is how the
+    // broken value got past a validator that was supposed to prevent it.
+    if (joined.toLowerCase().includes('type=')) {
       problems.push(
-        `with.tags must contain "type=raw,value=<version>" so the pushed tag is exactly config.yaml's version, got ${describe(rawTags)}`,
+        `with.tags must be a tag reference, not "type=..." (that is docker/metadata-action syntax; build-push-action passes it to buildx verbatim and buildx rejects it as an invalid reference format), got ${describe(rawTags)}`,
       );
     }
-    for (const banned of ['type=semver', 'latest', 'type=sha']) {
+
+    if (!joined.includes('needs.guard.outputs.ref')) {
+      problems.push(
+        `with.tags must be needs.guard.outputs.ref, so the pushed tag is exactly config.yaml's image:version and there is no second place to hard-code it, got ${describe(rawTags)}`,
+      );
+    }
+
+    for (const banned of ['latest', ':sha']) {
       if (joined.toLowerCase().includes(banned)) {
         problems.push(
           `with.tags must not use "${banned}": it produces tags other than the config.yaml version, so the image tag and the git tag diverge ("tag 一字不差")`,

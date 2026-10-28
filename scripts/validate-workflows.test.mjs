@@ -115,7 +115,7 @@ jobs:
           push: true
           provenance: false
           sbom: false
-          tags: type=raw,value=ghcr.io/zee1988/homeweave-ha-app:\${{ needs.guard.outputs.version }}
+          tags: \${{ needs.guard.outputs.ref }}
   verify-image:
     needs: [guard, publish, static]
     if: \${{ always() && needs.static.result == 'success' && (needs.publish.result == 'success' || (inputs.resume_from_verify && needs.publish.result == 'skipped')) }}
@@ -279,7 +279,8 @@ test('a job referencing its own outputs is reported as a self-dependency', () =>
 
 test('the exported constants describe the contract', () => {
   assert.deepEqual(REQUIRED_PLATFORMS, ['linux/amd64', 'linux/arm64']);
-  assert.deepEqual(EDGES.release['verify-image'], ['publish', 'static']);
+  assert.deepEqual(EDGES.release.publish, ['guard', 'static']);
+  assert.deepEqual(EDGES.release['verify-image'], ['guard', 'publish', 'static']);
   assert.deepEqual(EDGES.release.tag, ['guard', 'verify-image']);
   assert.equal(CI_GATE_TOKENS.length, 7);
   assert.deepEqual(PROFILES.all, ['ci.yml', 'release.yml']);
@@ -466,6 +467,22 @@ test('a semver tag rule is rejected', () => {
   const doc = release();
   doc.jobs.publish.steps[buildPushIndex(doc)].with.tags = 'type=semver,pattern={{version}}';
   isRed(checkBuildPushFlags(doc, 'publish'), 'tags');
+});
+
+// The exact string this validator used to REQUIRE. build-push-action passes it
+// to buildx verbatim and buildx answers "invalid reference format", which is how
+// the 2026-10-28 release run failed after the needs bug was fixed.
+test('metadata-action type=raw syntax is rejected as a tag reference', () => {
+  const doc = release();
+  doc.jobs.publish.steps[buildPushIndex(doc)].with.tags =
+    'type=raw,value=ghcr.io/zee1988/homeweave-ha-app:0.1.0';
+  isRed(checkBuildPushFlags(doc, 'publish'), 'metadata-action syntax');
+});
+
+test('a hard-coded tag instead of needs.guard.outputs.ref is rejected', () => {
+  const doc = release();
+  doc.jobs.publish.steps[buildPushIndex(doc)].with.tags = 'ghcr.io/zee1988/homeweave-ha-app:0.1.0';
+  isRed(checkBuildPushFlags(doc, 'publish'), 'needs.guard.outputs.ref');
 });
 
 test('an empty build context is rejected', () => {
