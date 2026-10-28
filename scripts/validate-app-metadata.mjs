@@ -90,9 +90,12 @@ const LOG_LEVELS = ['info', 'debug', 'warn'];
 // This constant is a copy, NOT the source of truth. Provenance stays homeweave_app/app-metadata.json
 // -> scripts/generate-app-metadata.mjs -> the generated files. V17 exists precisely because that
 // chain is trusted: it is the tripwire that fires when a hand edit bypasses the chain.
+// `version` moved 0.1.0 -> 0.1.1 for the Phase 3 release (D-01b in 01-CONTEXT.md): the 0.1.0
+// image is already published and tags are never overwritten, so runtime-behaviour changes need
+// a new one. This pin must track the released version exactly -- it is not a compatibility floor.
 const CONTRACT = {
   image: 'ghcr.io/zee1988/homeweave-ha-app',
-  version: '0.1.0',
+  version: '0.1.1',
   homeassistant: '2026.10.0',
   slug: 'homeweave',
 };

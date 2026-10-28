@@ -127,7 +127,9 @@ test('real repository: --check confirms zero drift', () => {
 // ---------------------------------------------------------------------------------------
 test('--check fails and names the stale artifact when the source changed but was not regenerated', (t) => {
   const root = makeTempTree(t, (source) => {
-    source.app.version = '0.1.1';
+    // Must differ from whatever the released version currently is, hence a value no release
+    // would ever use rather than "current + 1".
+    source.app.version = '9.9.9';
   });
 
   const before = artifactHashes(root);

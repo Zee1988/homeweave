@@ -29,6 +29,8 @@ guard        读 homeweave_app/config.yaml → version / ref；校验格式；�
 
 **审计口径**：任意版本 tag 的 commit 时间必须晚于对应 GHCR manifest 的 `created_at`。若相反，说明有人绕过 workflow 手工打了 tag。
 
+**已发布版本**：`0.1.0`（Phase 2 骨架）、`0.1.1`（Phase 3 运行时行为：启动 fail-fast 与 8 秒优雅关闭，决策 D-01b）。tag 一经发布不复用，所以任何运行时行为变更都必须换版本号——这也是 `0.1.0` 的镜像永远拿不到 Phase 3 修复的原因。
+
 ## 2. 包的可见性：先测，不要预设 private
 
 > **实测修正（2026-10-28）**：本节原先断言「用 `GITHUB_TOKEN` 推送的 package 即使源仓库公开，初始可见性仍是 private」。**首次真实发布证伪了这条**：在 `Zee1988/homeweave`（public）上推送 `0.1.0` 后，`verify-image` 的匿名 `docker pull` 直接成功，无需任何手动改可见性操作。

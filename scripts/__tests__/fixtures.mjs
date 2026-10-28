@@ -21,7 +21,7 @@
  * never treats this module as a test file.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,11 +32,17 @@ export const VALIDATOR_PATH = fileURLToPath(new URL('../validate-app-metadata.mj
 /** Repository root, derived from this module's location (never from process.cwd()). */
 export const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
+// Read from the source of truth rather than copied: a release bumps the version, and a test
+// baseline that still says 0.1.0 would turn the positive control into a false red.
+const SOURCE_VERSION = JSON.parse(
+  readFileSync(new URL('../../homeweave_app/app-metadata.json', import.meta.url), 'utf8'),
+).app.version;
+
 /** The generated artifacts, mirrored here so the baseline is a legal input by construction. */
 export const VALID_CONFIG = {
   name: 'HomeWeave',
   slug: 'homeweave',
-  version: '0.1.0',
+  version: SOURCE_VERSION,
   description: 'AI Home Operating System for Home Assistant',
   url: 'https://github.com/Zee1988/homeweave/tree/master/homeweave_app',
   arch: ['amd64', 'aarch64'],

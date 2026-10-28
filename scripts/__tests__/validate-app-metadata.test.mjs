@@ -375,11 +375,13 @@ test('V17: a different image owner is rejected', (t) => {
 test('V17: a bumped version is rejected', (t) => {
   const root = makeValidTree();
   t.after(() => cleanup(root));
+  // Deliberately not "current version + 1": this literal must never collide with the released
+  // version, or the case would stop being a negative one the next time the app is released.
   writeConfig(root, (config) => {
-    config.version = '0.1.1';
+    config.version = '9.9.9';
   });
 
-  assertDetects(runValidator(root), 'V17', 'version=0.1.1');
+  assertDetects(runValidator(root), 'V17', 'version=9.9.9');
 });
 
 test('V17: a different homeassistant minimum is rejected', (t) => {

@@ -68,6 +68,7 @@
 `01-RESEARCH.md` 现场核对官方参考与 Supervisor 源码后，暴露出 4 处需要重新裁决的点。以下修订**覆盖**上文对应决策，规划者以本节为准：
 
 - **D-01a: 镜像路径小写化（修订 D-01）。** `image` 必须全小写 `ghcr.io/zee1988/homeweave-ha-app`；`url` 与 `maintainer` 保留 `Zee1988` / `Zee`。理由：OCI/GHCR 镜像仓库路径不接受大写，按 `Zee1988` 写入会在 Phase 2 首推失败，且 `image` 前缀属 costly 变更（会改变已安装用户的更新源）。
+- **D-01b: 首发版本 0.1.0 → 0.1.1（2026-10-28，修订 D-01 的初始 `version`）。** 理由：`0.1.0` 镜像已发布且按 §5 不可覆盖（`check-tag-free.mjs` fail-closed），而 Phase 3 的启动 fail-fast 与 8 秒优雅关闭必须通过一个可部署的新 tag 才能交付，故发布 `0.1.1`。影响面仅 `version`：`image` / `slug` / `homeassistant` 均不变，已装用户只是收到一次常规更新，更新源不变。同步改动：`homeweave_app/app-metadata.json` 的 `app.version`、`scripts/validate-app-metadata.mjs` 的 `CONTRACT.version`（V17 是 pin，必须跟随当前发布版本，否则 tripwire 会把正常发版判成漂移）。
 - **D-03a: 最低版本 = 当前稳定版（修订 D-03）。** `homeassistant: "2026.10.0"`，证据为 2026-10-27 实取 `https://version.home-assistant.io/stable.json`。放弃 2024.x 保守基线，因为该基线在 2024.x 期没有任何正向证据（研究仅能标 `[ASSUMED]`），而“未验证却声明兼容”违背项目规则。降级风险可控：`_SCHEMA_APP_CONFIG` 使用 `extra=vol.REMOVE_EXTRA`，旧版 Supervisor 遇到不认识的键会静默忽略而非拒绝加载。
 - **D-05a: 把唯一性断言加回校验器（修订 D-05）。** 研究以 `supervisor/store/data.py` 的 `glob("**/config.*")` 证明仓库发现是**递归**的，`.example` 后缀仅靠后缀白名单逃过识别；任何新增的真实 `config.yaml` 都会变成第二个 App。因此唯一性检查从“人工评审”升级为自动化断言，ROADMAP 成功标准 2 由此满足。
 - **D-07a: `boot` / `startup` 不显式写（确认 D-07）。** 二者默认 `auto` / `application`，省略与显写等价；APP-02 所称“启动/停止字段”由 `init: false`、隐式 `/data` 挂载与平台默认值共同满足。
