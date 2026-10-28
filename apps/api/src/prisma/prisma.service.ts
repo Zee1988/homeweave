@@ -1,8 +1,9 @@
-import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/common';
 import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 import { resolveDatabaseUrl } from '../config/database-url';
 import { PrismaClient } from '../generated/prisma/client';
+import { SHUTDOWN_DISCONNECTED_MESSAGE } from '../lifecycle/shutdown.service';
 
 // Prisma 7 requires a driver adapter — there is no engine-free fallback path
 // (apps/api/src/generated/prisma/internal/prismaNamespace.ts:694-722: "A driver
@@ -27,7 +28,9 @@ import { PrismaClient } from '../generated/prisma/client';
 // shutdown hooks own the signal and a second handler would double-disconnect
 // (03-RESEARCH.md §7.1).
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService extends PrismaClient implements OnModuleInit, OnApplicationShutdown {
+  private readonly logger = new Logger('PrismaService');
+
   constructor(databaseUrl: string = resolveDatabaseUrl(process.env)) {
     super({ adapter: new PrismaBetterSqlite3({ url: databaseUrl }) });
   }
@@ -38,7 +41,19 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     await this.$connect();
   }
 
-  async onModuleDestroy(): Promise<void> {
+  /**
+   * `onApplicationShutdown`, not `onModuleDestroy` (deviation from 03-05 Task 2 step 4).
+   *
+   * Nest 12.3 runs `onModuleDestroy` *before* `beforeApplicationShutdown` and before
+   * `dispose()` closes the HTTP server (nest-application-context.js
+   * `runShutdownSequence`). Disconnecting there would drop the connection while in-flight
+   * requests are still being served, and the log order would read "prisma disconnected"
+   * before "stop accepting new requests" — the reverse of the contract. `onApplicationShutdown`
+   * runs after the server is closed, which is when the drain is done and the connection is
+   * genuinely idle.
+   */
+  async onApplicationShutdown(): Promise<void> {
     await this.$disconnect();
+    this.logger.log(SHUTDOWN_DISCONNECTED_MESSAGE);
   }
 }

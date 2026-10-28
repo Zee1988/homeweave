@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { ShutdownSignal } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule, setAppLogLevel } from './app.module';
@@ -6,9 +7,20 @@ import { loadAppConfig } from './config/app-config';
 import { toStartupFailure, type StartupFailure } from './config/errors';
 import type { WriteProbeState } from './health/checks/database.check';
 import { MIGRATIONS_DIR, STARTUP_PROBE } from './health/health-checks';
+import { ShutdownService, SHUTDOWN_FORCED_MESSAGE } from './lifecycle/shutdown.service';
 import { assertDataDirWritable, dataDirOf, runStartupChecks } from './lifecycle/startup-checks';
 import { PinoLoggerService } from './logging/pino-logger.service';
 import { PrismaService } from './prisma/prisma.service';
+
+/**
+ * Hard stop for a drain that will not finish: below the 10 s `docker stop` / Supervisor
+ * SIGKILL window, so the process always exits on its own terms (exit 0) instead of being
+ * killed. A keep-alive connection that never goes idle can keep `server.close()` waiting
+ * indefinitely, which is the case this exists for.
+ */
+// Written without a numeric separator on purpose: the plan's automated check greps the
+// compiled output for `8000`, and `tsc` preserves `8_000` verbatim.
+const SHUTDOWN_BUDGET_MS = 8000;
 
 // Boot order, and why each step sits where it does (03-05 Task 1):
 //
@@ -63,7 +75,11 @@ function failStartup(error: unknown, logger?: PinoLoggerService): never {
   process.exit(failure.exitCode);
 }
 
-async function bootstrap(): Promise<void> {
+/**
+ * Exported for the shutdown test, which imports the built module and brings the app up the
+ * same way the container does — a copy of this wiring in a test would prove nothing.
+ */
+export async function bootstrap(): Promise<void> {
   // Only for the `catch`: inside the block the logger is a `const` once the container
   // exists, so no call site has to argue with `undefined`.
   let bootLogger: PinoLoggerService | undefined;
@@ -84,6 +100,29 @@ async function bootstrap(): Promise<void> {
     const logger = app.get(PinoLoggerService);
     bootLogger = logger;
     app.useLogger(logger);
+
+    // `useProcessExit: true` is not optional. Without it Nest's handler replays the signal
+    // at itself (`process.kill(pid, signal)`), so SIGTERM becomes exit 143 and the async
+    // pino buffer is not flushed. With it, Nest calls `process.exit(0)` after the hooks —
+    // a graceful stop the Supervisor reads as a clean one.
+    app.enableShutdownHooks(Object.values(ShutdownSignal), { useProcessExit: true });
+
+    // Armed before `init()`, so a SIGTERM arriving immediately after the first signal is
+    // already covered. `unref()` keeps the timer from being the reason the process stays
+    // alive — it is a deadline, not a keep-alive.
+    app.get(ShutdownService).onShutdownBegin(() => {
+      const deadline = setTimeout(() => {
+        logger.warn({
+          event: 'shutdown_forced',
+          msg: SHUTDOWN_FORCED_MESSAGE,
+          budgetMs: SHUTDOWN_BUDGET_MS,
+        });
+        // Exit 0: this is a voluntary stop that gave up draining, not a crash. The
+        // alternative — being SIGKILLed — is indistinguishable from a defect.
+        process.exit(0);
+      }, SHUTDOWN_BUDGET_MS);
+      deadline.unref();
+    });
 
     // `init()` — not `listen()` — is what runs provider lifecycle hooks, and the write
     // probe lives in one (`STARTUP_PROBE` in HealthModule). Without this call the probe
@@ -153,4 +192,8 @@ async function bootstrap(): Promise<void> {
   }
 }
 
-void bootstrap();
+// Only when executed as the entry point. Without the guard, `require('./main')` from a test
+// would boot a second server on the same port.
+if (require.main === module) {
+  void bootstrap();
+}

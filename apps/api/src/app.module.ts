@@ -2,6 +2,7 @@ import { Module, type MiddlewareConsumer, type NestModule } from '@nestjs/common
 
 import type { LogLevel } from './config/log-level';
 import { HealthModule } from './health/health.module';
+import { ShutdownModule } from './lifecycle/shutdown.service';
 import { PinoLoggerService } from './logging/pino-logger.service';
 import { RequestIdMiddleware } from './logging/request-id.middleware';
 import { PrismaModule } from './prisma/prisma.module';
@@ -19,7 +20,7 @@ export function setAppLogLevel(level: LogLevel): void {
 }
 
 @Module({
-  imports: [PrismaModule, HealthModule],
+  imports: [PrismaModule, HealthModule, ShutdownModule],
   providers: [
     {
       provide: PinoLoggerService,
