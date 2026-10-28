@@ -29,11 +29,23 @@ guard        读 homeweave_app/config.yaml → version / ref；校验格式；�
 
 **审计口径**：任意版本 tag 的 commit 时间必须晚于对应 GHCR manifest 的 `created_at`。若相反，说明有人绕过 workflow 手工打了 tag。
 
-## 2. 第一次发布：GHCR 包需要手动设为 public
+## 2. 包的可见性：先测，不要预设 private
 
-用 `GITHUB_TOKEN` 推送到 GHCR 的 package，**即使源仓库是公开的，初始可见性仍是 private**。private 状态下 `verify-image` 的匿名 `docker pull` 必然失败（`unauthorized`），`tag` 随之被跳过 —— 这是设计意图，不是缺陷。
+> **实测修正（2026-10-28）**：本节原先断言「用 `GITHUB_TOKEN` 推送的 package 即使源仓库公开，初始可见性仍是 private」。**首次真实发布证伪了这条**：在 `Zee1988/homeweave`（public）上推送 `0.1.0` 后，`verify-image` 的匿名 `docker pull` 直接成功，无需任何手动改可见性操作。
+>
+> 因此正确做法是**让 `verify-image` 自己回答**：它绿就说明包已可匿名拉取，不需要 §2 的任何操作；它红在 `unauthorized` / `denied` 时才执行下面的步骤。
 
-一次性改成 public：
+如果确实需要改：
+
+```bash
+gh api --method PATCH /user/packages/container/homeweave-ha-app -f visibility=public
+```
+
+或 GitHub Web UI：个人头像 → Your packages → `homeweave-ha-app` → Package settings → Danger Zone → Change visibility。
+
+注意 `gh api /user/packages/...` 需要 `read:packages` 作用域；默认的 `gh auth login` token 通常没有，会返回 403 `You need at least read:packages scope`。那只影响**查询**，不影响 `verify-image` 的匿名 pull 结论。
+
+改完之后**不要**重新走完整流程（会卡在 guard 的「tag 必须空闲」），按 §4 用 resume 重跑。
 
 ```bash
 gh api --method PATCH /user/packages/container/homeweave-ha-app -f visibility=public
