@@ -4,16 +4,16 @@ milestone: v1.0
 current_phase: 02
 current_phase_name: 镜像构建与发布链路
 status: executing
-stopped_at: Phase 02 wave 2 complete — 02-01 and 02-02 done (2 of 4 plans); 02-03 Dockerfile is next
-last_updated: "2026-10-28T00:25:00.000Z"
+stopped_at: Phase 02 wave 3 complete — 02-03 done (3 of 4 plans); 02-04 CI and release is next
+last_updated: "2026-10-28T00:55:00.000Z"
 last_activity: 2026-10-28
-last_activity_desc: 02-02 landed — Prisma 7 client + init migration + ENGINE_DECISION=RUST_FREE (89 tests / 21 lint files)
-state_head: e72823af8b328fa0ff1df58c9db71df407813c39
+last_activity_desc: 02-03 landed — multi-stage Dockerfile + 8 image assertions + fail-fast build:image (116 tests / 22 dockerfile rules)
+state_head: 82009fa5733b2a00a94c1b721b5ff1301abe5bee
 progress:
   total_phases: 7
   completed_phases: 1
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
 ---
 
 # Project State
@@ -28,11 +28,11 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 ## Current Position
 
 Phase: 02 (镜像构建与发布链路) — EXECUTING
-Plan: 2 of 4 (02-01 workspace 骨架与可构建 API、02-02 Prisma Client 与初始迁移)
-Status: wave 2 complete — 02-03（Dockerfile 与镜像构建）是下一份计划
-Last activity: 2026-10-28 — 02-02 landed; T-02-02 判定 RUST_FREE（0 原生引擎二进制）
+Plan: 3 of 4（02-04 CI 与发布待执行）
+Status: wave 3 complete — **镜像从未构建，容器内 8 条断言从未运行**（本机无 docker、无 bash）
+Last activity: 2026-10-28 — 02-03 landed; Dockerfile 结构已闭环，容器侧交 02-04 的 CI 首跑
 
-Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 8/10 plans executed)
+Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 9/10 plans executed)
 
 ## Performance Metrics
 
@@ -62,6 +62,7 @@ Progress: [█░░░░░░░░░] 14%  (1/7 phases verified, 8/10 plans
 | Phase 01 P03 | 4 min | 3 tasks | 4 files |
 | Phase 02 P01 | ~45 min | 6 tasks | 12 files |
 | Phase 02 P02 | ~60 min | 6 tasks | 12 files |
+| Phase 02 P03 | ~50 min | 5 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,10 @@ Decisions are logged in PROJECT.md Key Decisions table. Recent decisions affecti
 - [Phase 02]: Prisma 7 的 `generator prisma-client-js` 通过 `validate` 但**不生成任何代码**；必须用 `prisma-client` + 显式 `output`。任何「探测生成目录」的脚本若不按 schema 所在目录解析 `output`，会得到假的 `RUST_FREE`
 - [Phase 02]: `ENGINE_DECISION=RUST_FREE`（client 目录 9 文件 / 0 原生二进制），`binaryTargets` 整条配置作废；02-03 的引擎断言据此降级为 skipped，而不是靠人改代码
 - [Phase 02]: `migrate deploy` 的相对 `DATABASE_URL` 基准是 `apps/api`（config 所在目录），不是仓库根 —— 验收脚本按仓库根找 `.tmp/verify.db` 会误判「db missing」
+- [Phase 02]: 镜像的「结构正确」与「可用」必须分开断言：`validate:dockerfile`（本地可闭环，22 条规则 / 27 用例）管前者，`scripts/ci/assert-image.sh`（CI-only，8 条）管后者。本机 `docker` 与 `bash` 均不存在，任何「镜像已验证」的说法都是虚报
+- [Phase 02]: `pnpm deploy --prod` 是唯一自洽的运行时依赖形态 —— 直接拷 `node_modules` 会带上 `.pnpm/` 与指向 `/app` 的绝对链接，relocate 到 runtime 后解析不到；`--legacy` 是 pnpm 10 的旗标，9.15.4 没有
+- [Phase 02]: `core.autocrlf=true` 会让 `.sh` 以 CRLF 检出，Linux CI 报 `bad interpreter`（本机从不执行该文件，缺陷只在 CI 暴露）；`.gitattributes` 只钉 `*.sh`/`Dockerfile`/`*.mjs`，不用 `* text=auto` 以免全仓库行尾重排
+- [Phase 02]: 镜像标签的版本号单一来源是 `homeweave_app/config.yaml`；读不到就 exit 1，拒绝给镜像打 `undefined` 标签
 
 ### Pending Todos
 
@@ -111,8 +116,8 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T00:25:00.000Z
-Stopped at: Completed 02-02-PLAN.md (phase 02 wave 2 done, 2/4 plans)
+Last session: 2026-10-28T00:55:00.000Z
+Stopped at: Completed 02-03-PLAN.md (phase 02 wave 3 done, 3/4 plans)
 Resume file: None
 
-**Next action:** `/gsd-execute-phase 2 --wave 3` 执行 `02-03-PLAN.md`（Dockerfile 与镜像构建）。**开工前必须先读 02-02-SUMMARY 的 Next Phase Readiness**：Prisma Client 已改到 `apps/api/dist/generated/prisma`，运行期仍需 `@prisma/client` 的 `runtime/`，引擎断言须按 `ENGINE_DECISION=RUST_FREE` 降级为 skipped —— 02-03 计划原文的旧假设（拷 `node_modules/.prisma/client` + 断言 libquery_engine）已不成立。
+**Next action:** `/gsd-execute-phase 2 --wave 4` 执行 `02-04-PLAN.md`（CI 与发布）。开工前读 02-03-SUMMARY 的 Next Phase Readiness，三条硬约束：① `verify-image` job 必须真实调用 `sh scripts/ci/assert-image.sh <ref>`，否则脚本退化成注释；② 跨架构要 `--platform linux/amd64,linux/arm64` 并去掉 `--load` 改 `--push`；③ `ENGINE_DECISION` 若翻转成 NATIVE_ENGINE，`prod-deps` 阶段必须重跑 `prisma generate`，否则镜像里没有引擎文件。
