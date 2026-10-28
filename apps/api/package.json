@@ -6,9 +6,9 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "prisma generate && tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "prisma generate && tsc -p tsconfig.json --noEmit",
     "start": "node dist/main.js",
-    "test": "node --experimental-strip-types --test \"test/**/*.test.ts\" && node --test \"test/**/*.dist.test.mjs\"",
+    "test": "prisma generate && tsc -p tsconfig.json && node --experimental-strip-types --test \"test/**/*.test.ts\" && node --test \"test/**/*.dist.test.mjs\"",
     "db:generate": "prisma generate",
     "db:migrate:deploy": "prisma migrate deploy"
   },
