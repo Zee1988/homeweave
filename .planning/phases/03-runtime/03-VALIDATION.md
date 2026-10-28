@@ -92,14 +92,27 @@ created: "2026-10-28"
 >
 > 定位：CI（run 40654684908）已在 Linux 容器内验过镜像内容、fail-fast 与排空。真机要验的是 Supervisor 的**挂载、信号投递、探活**三条路径，不是把 CI 重跑一遍。
 
-### V1 安装与版本
+### V1 添加仓库、安装与版本
+
+首次安装必须先把仓库交给 Supervisor，否则商店里没有 HomeWeave Apps。UI 等价路径：设置 → 加载项 → 加载项商店 → 右上角 ⋮ → 仓库 → 粘贴 URL。重复 `add` 会报 already exists，无害，跳过即可。
 
 ```bash
-ha store reload && ha apps install homeweave
+ha store add https://github.com/Zee1988/homeweave
+ha store reload
+ha apps info homeweave | grep -E 'version|state'   # 商店已列出该 App 后再装
+ha apps install homeweave
 ha apps info homeweave | grep -E 'version|state'
 ```
 
 预期 `version: 0.1.1`、`state: started`。不是则先看 `ha apps logs homeweave`。
+
+安装拉的是 GHCR 镜像，不在 HA 上编译：`config.yaml` 的 `image` 不带 tag，HA 用 `version` 补成 `ghcr.io/zee1988/homeweave-ha-app:0.1.1`。所以 master 上的代码改动不影响已装实例，只有换版本号才会产生新镜像。仓库结构三项已核对：根目录有 `repository.yaml`；`config.yaml` 仅存在于一级子目录 `homeweave_app/`（根目录不能再放一份，HA 会冲突）；两者都在 git 树里、未被 ignore。匿名拉取能力由 CI 的 `verify-image` 保证——它先 `docker logout` 并清空 credential 再 `docker pull`。
+
+| 现象 | 判读 |
+|---|---|
+| 商店里没有 HomeWeave Apps 分区 | HA 访问不到 GitHub：`ha supervisor logs \| grep -i -E 'repository\|git'` |
+| 安装报 `unauthorized` / `manifest unknown` | GHCR 包被改回 private，去包设置里设为 Public |
+| 报 `Dockerfile not found` | 镜像拉取已失败、HA 回退本地构建；`homeweave_app/` 下没有 Dockerfile，根因仍是拉取失败 |
 
 ### V2 启动与 `/data` 可写（A）
 
