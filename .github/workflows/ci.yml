@@ -1,0 +1,83 @@
+# ci.yml -- the static gate. Nothing in this file builds or publishes an image.
+#
+# WHY NO IMAGE BUILD HERE
+# Under this repository's authorisation model the repository-level GITHUB_TOKEN is
+# one step away from being mistaken for a trust boundary on a production release.
+# A pull request run gets a read-only token (forks get one downgraded further), so
+# asking `ci.yml` to build would either fail for contributors or tempt someone into
+# `pull_request_target`. The static gate is therefore the whole job here:
+# structure, metadata, Dockerfile, lint, typecheck and unit tests.
+#
+# A REAL LIMITATION, WRITTEN DOWN SO IT IS NOT MISREAD
+# A tag pushed by GITHUB_TOKEN does NOT trigger a workflow run -- GitHub suppresses
+# recursive triggers. So `push.tags` below only ever covers a tag a human pushed
+# with a PAT. It is NOT part of the release chain: the "image first, git tag second"
+# ordering is enforced entirely by the job dependency graph in release.yml, not by
+# this trigger. Do not describe this as "tags get re-gated after a release".
+#
+# BRANCHES: the repository's default branch is `master` (see
+# homeweave_app/config.yaml's `url` and 02-RESEARCH-CI.md). `main` is listed too so
+# a future rename does not silently switch the gate off; that is a deviation from
+# the plan's `branches: [main]` and it is recorded in 02-04-SUMMARY.md.
+name: ci
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    tags:
+      - '*.*.*'
+  pull_request:
+    branches:
+      - master
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: static gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: corepack pnpm install --frozen-lockfile
+
+      # Each gate is its own step, not a `;` chain: one failing check must stop the
+      # run with its own name on it, and the log must say which gate went red.
+      - name: Validate workflow structure
+        run: corepack pnpm validate:workflows:ci
+
+      - name: Validate App metadata
+        run: corepack pnpm validate:app
+
+      - name: Validate Dockerfile
+        run: corepack pnpm validate:dockerfile
+
+      - name: Lint
+        run: corepack pnpm lint
+
+      - name: Typecheck
+        run: corepack pnpm typecheck
+
+      - name: Unit tests
+        run: corepack pnpm test
+
+      - name: Check generated App metadata is in sync
+        run: corepack pnpm check:app
