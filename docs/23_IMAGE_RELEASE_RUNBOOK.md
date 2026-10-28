@@ -138,7 +138,7 @@ docker pull ghcr.io/zee1988/homeweave-ha-app:<version>
 | `check-tag-free.mjs` / `assert-manifest-platforms.mjs` 的判定分支 | **已验证**：纯函数单测覆盖（固定字符串喂入，不依赖 Docker / `gh`）。 |
 | 两个 workflow 的真实运行 | **未验证**：从未在 GitHub 上运行过一次。 |
 | `publish` 的 buildx 双架构推送 | **未验证**：本机无 Docker。 |
-| `verify-image` 的匿名 pull、`assert-image.sh` 八项检查 | **未验证**：本机无 Docker。 |
+| `verify-image` 的匿名 pull、`assert-image.sh` 九项检查 | **未验证**：本机无 Docker（含第 9 项 `/health/live` 容器内探测，脚本自身只在 CI 跑过）。 |
 | GHCR 的实际报错文案与 `classifyTagState` 关键字是否吻合 | **未知（unknown）**：本机无 Docker、无 `gh`。若首次运行显示文案不匹配，按 `unknown-error` fail-closed 处理并补关键字，**不得**放宽为「非零即空闲」。 |
 | 第二次发布（包已存在、token 带 `packages: write`）时远端对缺失 tag 返回的文案 | **未知（unknown）**：需实测后补判据，不得靠豁免绕过。 |
 
