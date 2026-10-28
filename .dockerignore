@@ -1,0 +1,46 @@
+# Build context for the production image (see Dockerfile). The context is the
+# repository root, so this file is the only thing standing between the build and the
+# whole working tree.
+#
+# Two jobs, in order of importance:
+#   1. leak guards — .env files, private keys and the secrets directory must never
+#      reach a layer (threat T-02-03). A leaked layer cannot be patched afterwards.
+#   2. context hygiene — node_modules, stale dist and internal planning material are
+#      platform-specific or private, and shipping them only inflates the image and
+#      poisons pnpm's store with foreign .bin shims and native modules.
+#
+# NOT ignored, deliberately: `apps/api/prisma/migrations`. The runtime stage copies
+# `prisma/` out of the build stage, so ignoring it would produce an image with no
+# migration history while every other check stayed green. Kept explicit here because
+# a future "tidy up" pass is exactly what would drop it.
+
+node_modules
+**/node_modules
+
+**/dist
+
+.git
+.github
+
+.planning
+
+# The App manifest tree is consumed by Supervisor, not by the image build.
+homeweave_app
+
+# Internal docs and examples never ship.
+docs
+examples
+
+# Second line of defence behind `sourceMap: false` in apps/api/tsconfig.json:
+# a source map embeds sourcesContent, which leaks the sources in another form.
+*.map
+
+**/*.spec.ts
+**/*.test.*
+**/__tests__
+
+.env
+.env.*
+*.pem
+*.key
+secrets

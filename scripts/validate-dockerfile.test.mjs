@@ -1,11 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   ignoresPath,
   logicalLines,
+  readInputs,
   validateDockerfile,
 } from './validate-dockerfile.mjs';
+
+/** Repository root: this test file lives in `scripts/`. */
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
  * A minimal Dockerfile that satisfies every rule. Each defect case below mutates
@@ -241,6 +247,18 @@ test('D10: a VOLUME directive fails', () => {
   const result = run(GOOD.replace('USER node', 'VOLUME /data\nUSER node'));
   assert.equal(result.ok, false);
   assert.ok(codes(result).includes('D10'));
+});
+
+// The real artifacts are asserted too, so the rules cannot quietly drift away from
+// the file they exist to protect. This case reads the repository's own Dockerfile and
+// .dockerignore; the defect cases above stay on temp strings and never touch them.
+test('the repository Dockerfile and .dockerignore pass every rule', () => {
+  const result = validateDockerfile(readInputs(REPO_ROOT));
+  assert.deepEqual(
+    result.failures.map((failure) => `${failure.code}: ${failure.message}`),
+    [],
+  );
+  assert.equal(result.ok, true);
 });
 
 test('logicalLines drops full-line comments and joins continuations', () => {
