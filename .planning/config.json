@@ -42,7 +42,8 @@
   "git": {
     "create_tag": true,
     "repo_tagging": "single",
-    "branching_strategy": "none"
+    "branching_strategy": "none",
+    "allow_default_branch_commits": true
   },
   "ship": {
     "pr_body_sections": [
