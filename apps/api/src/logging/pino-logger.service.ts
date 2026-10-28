@@ -129,9 +129,18 @@ export class PinoLoggerService implements LoggerService {
     else if (data.length > 1) payload.data = data;
 
     // Non-string messages (objects, errors) are the data, never the msg field: pino
-    // would otherwise stringify them with its own lossy `String()` fallback.
-    const text = typeof message === 'string' ? message : 'log message';
-    if (typeof message !== 'string') payload.data = data.length > 0 ? [message, ...data] : message;
+    // would otherwise stringify them with its own lossy `String()` fallback. A plain
+    // object is spread so its keys stay top-level fields — that is what makes a line
+    // like the startup record queryable by `port` instead of buried under `data`.
+    const text = typeof message === 'string' ? message : undefined;
+    if (typeof message !== 'string') {
+      if (isPlainObject(message)) {
+        Object.assign(payload, message);
+        if (data.length > 0) payload.data = data;
+      } else {
+        payload.data = data.length > 0 ? [message, ...data] : message;
+      }
+    }
 
     switch (level) {
       case 'trace':
@@ -154,6 +163,13 @@ export class PinoLoggerService implements LoggerService {
         break;
     }
   }
+}
+
+/** Guards the spread above: a Prisma error or a Date must stay under `data`. */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /**
