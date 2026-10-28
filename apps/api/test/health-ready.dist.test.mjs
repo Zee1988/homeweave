@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -16,12 +16,13 @@ import { fileURLToPath } from 'node:url';
 //   A  a fresh volume is READY, and `migrations: unknown` does not make it unready
 //      (that is D-06 asserted behaviourally, not just in a comment)
 //   B  a migrated database reports `migrations: ok`
-//   C  a read-only data directory answers 503, with a body that carries no path, no SQL
-//      and no driver name (T-03-07). Windows cannot express "read-only directory", so it
-//      is skipped there — see the skip reason, and 03-VALIDATION.md A2.
-//   D  the same 503 path driven by free space instead of permissions, which is
-//      expressible on every platform — this is the scenario that actually observes the
-//      503 mapping and the body's non-leakiness on this machine.
+//   C  MOVED. A read-only data directory no longer reaches readiness: 03-05 makes it a
+//      startup failure (exit 78, reason `dir_readonly`), because a process that cannot
+//      persist anything should not report itself as serving. The proof lives in
+//      `startup-exit.dist.test.mjs`; asserting a 503 here would pin the opposite contract.
+//   D  the 503 path driven by free space instead of permissions, which is expressible on
+//      every platform — this is the scenario that actually observes the 503 mapping and
+//      the body's non-leakiness on this machine.
 //   E  the compiled status-code expression never mentions `migrations` (D-06 guard).
 
 const API_ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -179,38 +180,6 @@ test(
     assert.equal(body.checks.migrations.pending, 0);
     assert.equal(body.checks.migrations.failed, 0);
     assertNoInternalDetail(body, 'B');
-  },
-);
-
-test(
-  'C: a read-only data directory answers 503 without leaking the host',
-  {
-    skip:
-      process.platform === 'win32'
-        ? 'chmod 0555 does not restrict writes on win32 — unverified here, tracked as 03-VALIDATION.md A2'
-        : false,
-  },
-  async (t) => {
-    const dir = mkdtempSync(join(tmpdir(), 'homeweave-ready-c-'));
-    // The database file itself must pre-exist and stay writable so that `$connect` can
-    // open it: the failure under test is the DIRECTORY not being writable (which is what
-    // the startup write probe detects), not the file being unopenable.
-    writeFileSync(join(dir, 'readonly.db'), '');
-    chmodSync(dir, 0o555);
-
-    t.after(() => {
-      chmodSync(dir, 0o755);
-      rmSync(dir, { recursive: true, force: true });
-    });
-
-    const server = await startServer(t, { port: 18102, databaseUrl: databaseUrlFor(dir, 'readonly.db') });
-    const { status, body } = await server.get('/health/ready');
-
-    assert.equal(status, 503);
-    assert.equal(body.status, 'degraded');
-    assert.equal(body.checks.database.status, 'fail');
-    assert.match(String(body.checks.database.reason), /not writable|directory missing|write probe/);
-    assertNoInternalDetail(body, 'C');
   },
 );
 

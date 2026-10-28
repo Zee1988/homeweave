@@ -76,6 +76,8 @@ Dockerfile                                       +ENV DATABASE_URL，+prebuild �
 4. **第 9 项检查用 `docker exec` 而非 `docker run`。** `docker run ... node -e fetch` 会覆盖镜像的 CMD，被探测的容器里根本没有服务在监听。
 5. **两处过时注释一并修正**：Dockerfile 的 HEALTHCHECK 理由（原文说「Phase 3 之前没有 HTTP 端点」）与 `docs/23` 的「八项检查」。
 
+6. **`health-ready.dist.test.mjs` 的用例 C 被删除，场景移交 `startup-exit.dist.test.mjs`。** 03-02 写 C 时假设「目录不可写 → 进程照常启动、`/health/ready` 返回 503」；03-05 的启动写探针把同一条件变成 `dir_readonly` / exit 78，两个契约不能同时成立。归属 fail-fast：不可写等于无法持久化任何东西，此时报告 ready 是虚假的。因此改为断言 78 + `dir_readonly`。该冲突只在 Linux CI 暴露——Windows 上 `chmod` 不生效，本地一直「通过」。
+
 ## 残余风险
 
 - **`/data` 可写性只在 CI 外验证过**：容器以 `USER node` 运行，`/data` 的属主由 `RUN mkdir -p /data && chown node:node /data` 保证；但真实 HAOS 挂载的卷权限未在真机确认过。若 Supervisor 以不同 uid 挂载，表现是启动即 exit 78（`dir_readonly`）——这是可诊断的失败，不是静默错误，但需要真机验证（计划已明确禁止为此删 `USER node`）。
