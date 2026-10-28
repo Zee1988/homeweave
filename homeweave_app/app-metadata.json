@@ -20,6 +20,7 @@
     "homeassistant_api": true,
     "ingress": true,
     "ingress_port": 8099,
+    "watchdog": "http://[HOST]:[PORT:8099]/health/live",
     "options": {
       "log_level": "info",
       "ha_url": ""

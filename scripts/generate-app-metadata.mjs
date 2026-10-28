@@ -244,6 +244,14 @@ function buildConfigYaml(app) {
 
   // Key order is part of the contract (01-PATTERNS.md section 4). Any reordering
   // is a defect: it would produce a meaningless diff on every regeneration.
+  //
+  // `watchdog` (03-02, D-13) is the one key appended after the contract was written. It sits
+  // immediately after `ingress_port` and before `options`/`schema`, which keeps every key the
+  // contract actually names in its recorded relative order -- the contract fixes the sequence of
+  // the 11 original keys plus the options/schema tail, and inserting between the ingress block and
+  // the options block is the only slot that disturbs neither. It is also the semantically adjacent
+  // slot: `ingress_port` is the port Supervisor proxies to, and `watchdog` is the URL it probes on
+  // that same port, so a reader who changes one is looking straight at the other.
   const lines = [
     CONFIG_REFERENCE_COMMENT,
     `name: ${scalar(app.name)}`,
@@ -258,6 +266,7 @@ function buildConfigYaml(app) {
     `homeassistant_api: ${scalar(app.homeassistant_api)}`,
     `ingress: ${scalar(app.ingress)}`,
     `ingress_port: ${scalar(app.ingress_port)}`,
+    `watchdog: ${scalar(app.watchdog)}`,
   ];
 
   lines.push('options:');
@@ -320,8 +329,9 @@ function writeLines(path, lines) {
  *
  * This list exists to make the generator fail closed on its own input. Before it, a key the
  * builder never read -- a typo, a rename, an idea someone added and forgot to wire up -- was
- * silently dropped: `app.watchdog = true` produced exit 0 and an artifact with no watchdog in
- * it. That breaks the one invariant the whole single-source-of-truth design rests on, namely
+ * silently dropped: `app.watchdogUrl = "http://..."` produced exit 0 and an artifact with no
+ * watchdog in it (Supervisor ignores unknown keys with no warning, so nothing anywhere said so).
+ * That breaks the one invariant the whole single-source-of-truth design rests on, namely
  * that "the generator ran clean" means "the source was applied". Keep this list in sync with
  * buildConfigYaml / buildSchemaDsl; the failure message says so.
  */
@@ -338,6 +348,7 @@ const APP_SOURCE_KEYS = [
   'homeassistant_api',
   'ingress',
   'ingress_port',
+  'watchdog',
   'options',
   'optionDefs',
   'commentedPortsComment',

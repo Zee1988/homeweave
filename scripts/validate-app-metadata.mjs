@@ -45,15 +45,19 @@ const CONFIG_ALLOWED_KEYS = new Set([
   'homeassistant_api',
   'ingress',
   'ingress_port',
+  'watchdog',
   'options',
   'schema',
 ]);
 
 // The REQUIRED key set, derived from the whitelist above so the two cannot drift apart.
 //
-// Phase 1 ships the minimal field set on purpose (D-07 excludes boot / watchdog / map /
-// apparmor), so today "required == allowed" is the accurate statement: every key we are
-// willing to write must also be present. It is derived rather than re-listed because a second
+// Phase 1 shipped the minimal field set on purpose (D-07 excludes boot / map / apparmor, and at
+// the time `watchdog` too: there was no HTTP endpoint to probe). Phase 3 adds `/health/live`, so
+// `watchdog` now joins the set -- it is the only key Supervisor uses to keep the app alive, and an
+// app that ships without it is never restarted, which is exactly the failure a presence check
+// catches. boot / map / apparmor remain excluded. So "required == allowed" is still the accurate
+// statement: every key we are willing to write must also be present. It is derived rather than re-listed because a second
 // hand-maintained array is exactly how a key ends up allowed by V8 yet unguarded by V2 -- a
 // gap between the two sets that no check owns. Adding a key to either set is therefore one
 // deliberate, paired edit.
@@ -353,6 +357,37 @@ if (config && has(config, 'ingress_port')) {
     CONFIG_FILE,
     `"ingress_port" must be an integer in 0..65535 (0 asks Supervisor to allocate one from 62000-65500), got ${describe(port)} "${port}"`,
   );
+}
+
+// V20: watchdog must be an http(s) URL string that points at the ingress port.
+//
+// The type check is the load-bearing half. Supervisor ignores an unknown or wrongly typed value
+// with no warning at all, so `watchdog: true` is not "a bool that gets coerced" -- it is a
+// watchdog that never fires, discovered only when the app hangs and nobody restarts it. Hence the
+// explicit rejection of booleans and of anything not starting with http:// or https:// (a bare
+// `[HOST]:[PORT:8099]/health/live` is a string too, and equally dead).
+//
+// The [PORT:8099] check ties the two keys together: Supervisor substitutes the port from
+// `ingress_port` unless the placeholder names a different one, so a watchdog on any other port
+// probes a socket nothing listens on. 8099 is the documented container port and the one
+// apps/api's DEFAULT_PORT uses.
+if (config && has(config, 'watchdog')) {
+  const watchdog = config.watchdog;
+  const isUrlString = typeof watchdog === 'string' && /^https?:\/\/\S+$/.test(watchdog);
+  check(
+    isUrlString,
+    'V20',
+    CONFIG_FILE,
+    `"watchdog" must be an http:// or https:// URL string (Supervisor silently ignores a boolean or any other type, so the app would never be restarted), got ${describe(watchdog)}`,
+  );
+  if (isUrlString) {
+    check(
+      watchdog.includes('[PORT:8099]'),
+      'V20',
+      CONFIG_FILE,
+      `"watchdog" must probe the ingress port via the [PORT:8099] placeholder, got "${watchdog}"`,
+    );
+  }
 }
 
 const options = config && isPlainObject(config.options) ? config.options : {};
