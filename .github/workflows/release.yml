@@ -280,6 +280,23 @@ jobs:
           set -euo pipefail
           bash scripts/ci/assert-image.sh "$REF"
 
+      # The two runtime-behaviour assertions (03-05). They belong to this job rather
+      # than to `static` because they need the pushed image; and to a release rather
+      # than to every PR because they cost a container start each.
+      - name: Fail-fast exit codes (78)
+        env:
+          REF: ${{ needs.guard.outputs.ref }}
+        run: |
+          set -euo pipefail
+          bash scripts/ci/assert-failfast.sh "$REF"
+
+      - name: Graceful shutdown inside the 8 s budget
+        env:
+          REF: ${{ needs.guard.outputs.ref }}
+        run: |
+          set -euo pipefail
+          bash scripts/ci/assert-shutdown.sh "$REF"
+
       - name: Manifest platform and version assertions
         env:
           REF: ${{ needs.guard.outputs.ref }}
