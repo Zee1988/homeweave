@@ -36,6 +36,15 @@ WORKDIR /app
 
 FROM base AS build
 
+# better-sqlite3@13.0.3 does NOT carry a usable linux prebuild for this Node ABI: its
+# install script falls through to `node-gyp rebuild`, so the stage needs a toolchain.
+# Evidence, not speculation: release run 40653948207 failed here on linux/amd64 with
+# "gyp ERR! Could not find any Python installation". The compiler stays in this stage,
+# so D-05b ("runtime needs no compiler") still holds.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
 # The build stage is the only place that sees the whole tree; the runtime stage
 # never does (see the prohibition on `COPY . .` below).
 COPY . .
@@ -58,6 +67,13 @@ FROM base AS prod-deps
 # NODE_ENV=production is load-bearing twice: pnpm honours it for --prod, and the
 # runtime stage inherits it.
 ENV NODE_ENV=production
+
+# Same toolchain as the build stage, for the same reason: `--prod` still runs
+# better-sqlite3's install script, and that script compiles. Skipping it here would
+# mean the runtime stage copies a package with no addon at all.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
 
 # Only the manifests are copied, so a source-only edit does not invalidate the
 # dependency layer. The root manifest is included because the lockfile carries a
@@ -83,18 +99,16 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile
 # Write down whichever path is actually used, in this comment.
 RUN pnpm --filter @homeweave/api deploy --prod /prod
 
-# better-sqlite3 must ship as a prebuilt N-API addon: the root pnpm override pins 13.0.3,
-# whose tarball carries `prebuilds/linux-<arch>.node` for glibc and musl on x64 and arm64
-# and has no install script, which is why the runtime stage needs no compiler (D-05b).
+# better-sqlite3 is compiled above (no usable prebuild for linux, see the build stage), so
+# the addon lives at build/Release/better_sqlite3.node rather than under prebuilds/. The
+# dangerous failure is not a missing file, it is an addon that resolves but cannot be
+# dlopen'd (wrong ABI, wrong libc) — the image builds, then the container dies at runtime
+# with "Could not locate the bindings file", which an operator reads as a deployment fault.
 #
-# If that file is gone, something replaced the dependency and the image would build fine
-# and then fail at runtime with "Could not locate the bindings file" — a failure a operator
-# reads as a deployment problem rather than a dependency one. Fail the build instead.
-#
-# Asserted on /prod (what the runtime stage copies), not on the install tree, and with a
-# search fallback so a pnpm layout change (hoisted vs. `.pnpm/` links) reports the real
-# problem — a missing prebuild — instead of a path mismatch.
-RUN node -e "const fs=require('fs');const base='/prod/node_modules';const pinned=base+'/better-sqlite3/prebuilds/linux-'+process.arch+'.node';if(fs.existsSync(pinned)){console.log('better-sqlite3 prebuild: '+pinned);process.exit(0)}const want='linux-'+process.arch+'.node';const hits=[];(function walk(dir){for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const p=dir+'/'+entry.name;if(entry.isDirectory())walk(p);else if(entry.name===want&&p.includes('better-sqlite3'))hits.push(p)}})(base);if(hits.length===0){console.error('better-sqlite3 prebuild missing: '+pinned);process.exit(1)}console.log('better-sqlite3 prebuild (found by search): '+hits[0])"
+# So this asserts the thing the runtime will actually do: require the package from /prod,
+# dlopen the addon, run SQL, read it back. Layout-independent, and it fails the build where
+# the log is still attached to the cause.
+RUN cd /prod && node -e "const Database=require('better-sqlite3');const db=new Database(':memory:');db.exec('create table probe(x)');db.prepare('insert into probe values (1)').run();const n=db.prepare('select count(*) as c from probe').get().c;db.close();if(n!==1){console.error('addon loaded but SQL did not run');process.exit(1)}console.log('better-sqlite3 addon loads and executes SQL')"
 
 FROM node:22-bookworm-slim AS runtime
 
