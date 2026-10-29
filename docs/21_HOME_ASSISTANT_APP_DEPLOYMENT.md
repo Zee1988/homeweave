@@ -146,7 +146,9 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 用户安装步骤：
 1. 打开 Home Assistant OS 的 Settings → Apps。
 2. 在 Apps 商店右上角菜单选择 Repositories。
-3. 添加 `https://github.com/<owner>/<repo>`。
+3. 添加仓库地址，两个源任选其一，内容一致（`master` 与 `0.1.0`–`0.1.2` tag 同步）：
+   - GitHub：`https://github.com/Zee1988/homeweave`
+   - Gitee 镜像：`https://gitee.com/zee638716/homeweave`（HAOS 所在网络访问不到 GitHub 时用这个）
 4. 找到 HomeWeave，安装并启动。
 5. 查看 Logs/Documentation，完成首次配置并验证 Home Assistant API 连接。
 6. 侧边栏会出现 HomeWeave 面板（0.1.2 起 `ingress_panel: true`），点开即 Ingress 入口；Phase 5 之前该面板返回 404，属预期。原生 App 需另行配置安全的 HomeWeave API 地址。
@@ -154,6 +156,21 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 发布流程：构建并发布镜像 → 更新 App 版本 → 用户在 Apps 中更新。每次数据库 schema 变化都需要向前迁移和备份策略；禁止启动时静默重置数据库。
 
 必须记录 `/data` 的持久化范围、Home Assistant 备份是否包含该目录（须在目标版本实测确认）、独立备份/恢复命令或 UI 流程、加密密钥备份和恢复验证。不要承诺 Supervisor 备份一定覆盖任意挂载数据，除非实际验证过。
+
+### 10.1 仓库源与镜像源是两件事
+
+Supervisor 装 App 时分两步走两条网络路径，**换仓库源不能替代换镜像源**：
+
+| 步骤 | 目标 | 由谁决定 |
+|---|---|---|
+| 读 App 元数据 | clone 仓库，读 `repository.yaml` / `homeweave_app/config.yaml` | 用户在「Repositories」里填的仓库地址 |
+| 拉镜像 | `ghcr.io/zee1988/homeweave-ha-app:<version>` | `config.yaml` 的 `image:` 字段，与仓库源无关 |
+
+所以：GitHub 不可达但 GHCR 可达 → 加 Gitee 源即可；两者都不可达 → 仍要解决镜像来源。GHCR 拉不动时按 §11.1 已走通的办法处理（`ghcr.dockerproxy.net` 逐 blob 下载 + `sha256sum` 校验 + `docker load`，Supervisor 见到本地同名镜像即跳过拉取）。
+
+`repository.yaml` 与 `config.yaml` 的 `url:` 仍是 GitHub 主页链接，纯展示用途，不参与 clone，也不影响从 Gitee 安装。
+
+Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向推送（`git push gitee master --tags`），两边 version/tag 必须一致。改版本号时两边都要推，否则 Gitee 上会出现指向不存在镜像的 `version`。
 
 ## 11. 验收标准
 
