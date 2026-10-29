@@ -66,7 +66,16 @@ test('positive control: a legal temp tree passes', (t) => {
 // V2 -- the five required keys. One case per key on purpose: deleting all five at once
 // would still exit 1 while proving nothing about which key actually triggers the check.
 // ---------------------------------------------------------------------------------------
-for (const key of ['name', 'slug', 'version', 'description', 'arch']) {
+for (const key of [
+  'name',
+  'slug',
+  'version',
+  'description',
+  'arch',
+  'ingress_panel',
+  'panel_title',
+  'panel_icon',
+]) {
   test(`V2: missing required key "${key}" is rejected`, (t) => {
     const root = makeValidTree();
     t.after(() => cleanup(root));
@@ -577,6 +586,32 @@ test('V8: uncommenting ports is rejected as an unknown key', (t) => {
   writeFileSync(configPath, enabled, 'utf8');
 
   assertDetects(runValidator(root), 'V8', 'uncommented ports');
+});
+
+// V21 -- the sidebar panel keys (0.1.2). `ingress_panel` opens the ingress URL from the
+// sidebar, so enabling it with `ingress` off would put a shortcut in the UI that points at a
+// URL Supervisor never proxies. The icon is checked because a non-mdi string renders as a
+// blank square, which reads as a bug in the app rather than a typo in the metadata.
+test('V21: ingress_panel without ingress is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+
+  writeConfig(root, (config) => {
+    config.ingress = false;
+  });
+
+  assertDetects(runValidator(root), 'V21', 'ingress_panel true with ingress false');
+});
+
+test('V21: a panel_icon that is not an mdi name is rejected', (t) => {
+  const root = makeValidTree();
+  t.after(() => cleanup(root));
+
+  writeConfig(root, (config) => {
+    config.panel_icon = 'home-automation';
+  });
+
+  assertDetects(runValidator(root), 'V21', 'panel_icon without the mdi: prefix');
 });
 
 // ---------------------------------------------------------------------------------------

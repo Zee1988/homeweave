@@ -52,6 +52,12 @@ export const VALID_CONFIG = {
   homeassistant_api: true,
   ingress: true,
   ingress_port: 8099,
+  // Sidebar entry (0.1.2), mirrored from config.yaml. Without it an installed app is only
+  // reachable by pasting the opaque /api/hassio_ingress/<token>/ URL, which is why the key
+  // was added after the first real install.
+  ingress_panel: true,
+  panel_title: 'HomeWeave',
+  panel_icon: 'mdi:home-automation',
   // Byte-identical to the string generate-app-metadata.mjs emits for app.watchdog (03-02).
   // This baseline is a mirror of homeweave_app/config.yaml, so a drift here means the fixture
   // stopped being a legal input and every negative case in this directory degenerates.

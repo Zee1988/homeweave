@@ -45,6 +45,9 @@ const CONFIG_ALLOWED_KEYS = new Set([
   'homeassistant_api',
   'ingress',
   'ingress_port',
+  'ingress_panel',
+  'panel_title',
+  'panel_icon',
   'watchdog',
   'options',
   'schema',
@@ -95,7 +98,7 @@ const LOG_LEVELS = ['info', 'debug', 'warn'];
 // a new one. This pin must track the released version exactly -- it is not a compatibility floor.
 const CONTRACT = {
   image: 'ghcr.io/zee1988/homeweave-ha-app',
-  version: '0.1.1',
+  version: '0.1.2',
   homeassistant: '2026.10.0',
   slug: 'homeweave',
 };
@@ -338,7 +341,7 @@ if (repository) {
 // V9: boolean flags must be real booleans. The string "true" is truthy in YAML but not a
 // boolean, and Supervisor validates the type before it ever looks at the value.
 if (config) {
-  for (const key of ['init', 'ingress', 'homeassistant_api']) {
+  for (const key of ['init', 'ingress', 'ingress_panel', 'homeassistant_api']) {
     if (has(config, key)) {
       check(
         typeof config[key] === 'boolean',
@@ -391,6 +394,39 @@ if (config && has(config, 'watchdog')) {
       `"watchdog" must probe the ingress port via the [PORT:8099] placeholder, got "${watchdog}"`,
     );
   }
+}
+
+// V21: the sidebar panel keys are one feature and have to agree with each other.
+//
+// `ingress_panel: true` only means something when `ingress: true` -- the panel opens the
+// ingress URL, so with ingress off Supervisor would add a sidebar shortcut to nothing.
+// And an icon string that is not an mdi name renders as a blank square, which reads as a
+// bug in the app rather than a typo in the metadata.
+if (config && config.ingress_panel === true) {
+  check(
+    config.ingress === true,
+    'V21',
+    CONFIG_FILE,
+    '"ingress_panel" is true but "ingress" is not -- the sidebar entry would point at a URL Supervisor never proxies',
+  );
+}
+
+if (config && has(config, 'panel_title')) {
+  check(
+    typeof config.panel_title === 'string' && config.panel_title.trim() !== '',
+    'V21',
+    CONFIG_FILE,
+    `"panel_title" must be a non-empty string, got ${describe(config.panel_title)}`,
+  );
+}
+
+if (config && has(config, 'panel_icon')) {
+  check(
+    typeof config.panel_icon === 'string' && /^mdi:[a-z0-9]+(-[a-z0-9]+)*$/.test(config.panel_icon),
+    'V21',
+    CONFIG_FILE,
+    `"panel_icon" must be an mdi icon name such as "mdi:home-automation", got ${describe(config.panel_icon)}`,
+  );
 }
 
 const options = config && isPlainObject(config.options) ? config.options : {};

@@ -7,7 +7,7 @@
   "app": {
     "name": "HomeWeave",
     "slug": "homeweave",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "AI Home Operating System for Home Assistant",
     "url": "https://github.com/Zee1988/homeweave/tree/master/homeweave_app",
     "arch": [
@@ -20,6 +20,9 @@
     "homeassistant_api": true,
     "ingress": true,
     "ingress_port": 8099,
+    "ingress_panel": true,
+    "panel_title": "HomeWeave",
+    "panel_icon": "mdi:home-automation",
     "watchdog": "http://[HOST]:[PORT:8099]/health/live",
     "options": {
       "log_level": "info",

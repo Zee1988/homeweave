@@ -245,13 +245,14 @@ function buildConfigYaml(app) {
   // Key order is part of the contract (01-PATTERNS.md section 4). Any reordering
   // is a defect: it would produce a meaningless diff on every regeneration.
   //
-  // `watchdog` (03-02, D-13) is the one key appended after the contract was written. It sits
-  // immediately after `ingress_port` and before `options`/`schema`, which keeps every key the
+  // `watchdog` (03-02, D-13) and the panel keys (0.1.2) are appended after the contract was
+  // written. They sit between the ingress block and `options`/`schema`, which keeps every key the
   // contract actually names in its recorded relative order -- the contract fixes the sequence of
   // the 11 original keys plus the options/schema tail, and inserting between the ingress block and
   // the options block is the only slot that disturbs neither. It is also the semantically adjacent
-  // slot: `ingress_port` is the port Supervisor proxies to, and `watchdog` is the URL it probes on
-  // that same port, so a reader who changes one is looking straight at the other.
+  // slot: `ingress_port` is the port Supervisor proxies to, `ingress_panel` is the sidebar entry
+  // that opens it, and `watchdog` is the URL probed on that same port, so a reader who changes one
+  // is looking straight at the others.
   const lines = [
     CONFIG_REFERENCE_COMMENT,
     `name: ${scalar(app.name)}`,
@@ -266,6 +267,15 @@ function buildConfigYaml(app) {
     `homeassistant_api: ${scalar(app.homeassistant_api)}`,
     `ingress: ${scalar(app.ingress)}`,
     `ingress_port: ${scalar(app.ingress_port)}`,
+    // 0.1.2 -- the app has no UI routes yet, so `ingress: true` alone gives a working
+    // URL that nobody can find: no sidebar entry, and the only way in is pasting the
+    // opaque /api/hassio_ingress/<token>/ URL. `ingress_panel` makes Supervisor add the
+    // entry. Title and icon are set with it because the defaults ("HomeWeave" from
+    // `name` is fine, but the icon defaults to a generic puzzle piece) read as an
+    // unfinished app.
+    `ingress_panel: ${scalar(app.ingress_panel)}`,
+    `panel_title: ${scalar(app.panel_title)}`,
+    `panel_icon: ${scalar(app.panel_icon)}`,
     `watchdog: ${scalar(app.watchdog)}`,
   ];
 
@@ -348,6 +358,9 @@ const APP_SOURCE_KEYS = [
   'homeassistant_api',
   'ingress',
   'ingress_port',
+  'ingress_panel',
+  'panel_title',
+  'panel_icon',
   'watchdog',
   'options',
   'optionDefs',
