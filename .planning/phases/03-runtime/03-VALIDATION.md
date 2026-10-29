@@ -111,6 +111,12 @@ created: "2026-10-28"
 
 顺带确认两处**不是缺陷**、需要在复验时按预期判读：`migrations: unknown`（D-06：镜像不含 prisma CLI，表由 Phase 4 建）；`ports` 保持关闭、只走 ingress（config.yaml 的既定设计）。
 
+### 0.1.2 发布状态（2026-10-29）
+
+镜像 `ghcr.io/zee1988/homeweave-ha-app:0.1.2`（`amd64` + `arm64`）与 git tag `0.1.2` 已发布。发布前的 `verify-image` 全绿：匿名拉取成功、内容断言 10/10（第 10 项读 `PID 1` 的 `/proc/1/status`，确认 uid 1000 且 `/data` 可写）、fail-fast ×3、8 s 停机预算、manifest 双架构断言均通过。两次中途 run 的原因与修法见 `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` §11.2。
+
+真机侧仍是**未执行**。装好 0.1.2 后只需跑 V2（预期无需手工 `chown` 即 `startup_ok`）与 V4–V9；V2 的判据是启动日志里的 `startup_ok` 加上以 `node` 身份在 `/data` 建删探针文件成功。
+
 ### V1 添加仓库、安装与版本
 
 首次安装必须先把仓库交给 Supervisor，否则商店里没有 HomeWeave Apps。UI 等价路径：设置 → 加载项 → 加载项商店 → 右上角 ⋮ → 仓库 → 粘贴 URL。重复 `add` 会报 already exists，无害，跳过即可。
@@ -242,9 +248,9 @@ docker exec addon_homeweave cat /data/options.json
 ### 结果回填
 
 - 本文件 Manual-Only 表的「实测结果」列逐条改 `✅ / ❌` 并写实测数字；
-- `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` 增「0.1.1 真机验证记录」：HAOS 版本、`/data` 属主、stop 耗时、watchdog 间隔。
+- `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` 的 §11.1 表逐行回填：HAOS 版本、`/data` 属主、stop 耗时、watchdog 间隔。
 
-**禁止**：为让 V2 通过而删 `USER node` 或改 `chown`；重跑同一版本号的 release（tag 不可覆盖，只能发 `0.1.2`）。
+**禁止**：为让 V2 通过而删 `USER node` 或改 `chown`；覆盖已发布的镜像或 git tag（`0.1.2` 之后只能发 `0.1.3`）。`resume_from_verify=true` 是重验已有镜像的唯一入口，不是"再发一次同一版本"。
 
 ---
 

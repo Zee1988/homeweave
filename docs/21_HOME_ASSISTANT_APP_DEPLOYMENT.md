@@ -189,6 +189,26 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 
 `migrations: unknown` 不是缺陷：镜像不含 prisma CLI、不执行迁移（D-06），表由 Phase 4 建；该状态不参与 `/health/ready` 的状态码。
 
+### 11.2 `0.1.2` 发布记录（2026-10-29）
+
+| 项 | 结果 |
+|---|---|
+| GHCR 镜像 | `ghcr.io/zee1988/homeweave-ha-app:0.1.2`，`amd64` + `arm64` |
+| git tag | `0.1.2`（`e8c4f16`），由 release 工作流的 `tag` job 创建 |
+| 匿名拉取 | ✅ 无凭证 `docker pull` 成功 |
+| 内容断言 | ✅ 10/10，含第 10 项「`/proc/1/status` 的 Uid 为 1000 且 `/data` 可写」 |
+| fail-fast / 停机预算 / manifest | ✅ 全部通过 |
+
+两次 run 的经过，保留下来是因为两者都是**门禁在起作用**，不是流程噪音：
+
+1. `40793337869`：镜像已推上 GHCR 且内容正确，但 `verify-image` 在断言脚本上失败——脚本用 `docker exec id -u` 读 uid，而 `docker exec` 从镜像 `USER`（root）起，恒为 0。失败的是断言，不是镜像。修法是读 `PID 1` 的 `/proc/1/status`（提交 `3337449`）。
+2. `40794597502`：走 `resume_from_verify=true` 只重验已有镜像，`verify-image` 全绿，但 `tag` job 被**静默跳过**，整轮 run 仍报 `success`——一次"绿色但没打 tag"的发布。原因是 GitHub 对 job 的隐式 `success()` 会评估整个依赖闭包，而 resume 按设计跳过了 `publish`。修法是给 `tag` 写明条件 `always() && needs.guard.result == 'success' && needs.verify-image.result == 'success'`（提交 `e8c4f16`），并把该条件变成校验规则 F14，防止回退。
+3. `40796348597`：同上 resume 路径，`verify-image` 与 `tag` 全绿，`0.1.2` tag 落库。
+
+镜像内容自 `40793337869` 的 `publish` 起未变：`3337449` 只改了 `scripts/ci/assert-image.sh`，`e8c4f16` 只改了工作流与校验器，二者都不进镜像。因此 `resume_from_verify=true` 重验的就是本应发布的那个镜像，而不是"另一个构建"。
+
+`0.1.2` 在真机上的复验（V2 与 V4–V9）仍是**未执行**项，见 `.planning/phases/03-runtime/03-VALIDATION.md`。
+
 ## 12. 官方参考
 
 - Apps 开发总览：https://developers.home-assistant.io/docs/apps
