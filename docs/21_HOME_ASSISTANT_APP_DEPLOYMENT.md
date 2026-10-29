@@ -285,6 +285,7 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 |---|---|
 | run | `40813153148`（`guard` → `static` → `publish` → `verify-image` → `tag` 全绿） |
 | 镜像 | `ghcr.io/zee1988/homeweave-ha-app:0.1.3`，`amd64` + `arm64`，匿名拉取成功 |
+| index digest | `sha256:60e96e89a26643cb2448d50c22f1cd7a9559e1e916e26de629a36fdebe6d5164`（含 `linux/amd64`、`linux/arm64` 两个 variant；2026-10-29 以匿名 token 复核，manifest 返回 200，包为 public） |
 | 内容断言 | ✅ 11/11（新增第 11 项） |
 | git tag | `0.1.3`，已同步到 Gitee |
 | 契约护栏 | `scripts/validate-app-metadata.mjs` 的 `CONTRACT.version` 同步改为 `0.1.3`（该值必须与已发布版本完全一致） |
@@ -299,6 +300,31 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 这条断言是 0.1.2 那次真机失败的机械复现：向运行中的容器写入 `root:root 0600` 的 `options.json`，`docker restart` 后要求 `-u node` 能读到、且启动记录为 `logLevelSource: "options"`。旧镜像在这条上必然失败，新镜像必须通过。
 
 `0.1.3` 相对 `0.1.2` 不改任何 API、schema 或 config：改动只有 entrypoint 的 chown 判定、日志级别的错误归类（新增 `source: "unreadable"`）、一条 warn，以及断言脚本。
+
+#### 11.4.1 `0.1.3` 真机验收（2026-10-29，HA Green / `aarch64`）
+
+12 步按序执行完毕，**10 通过、1 项待人工确认、1 项平台侧未观测到**。
+
+| 步骤 | 结果 | 关键值 |
+|---|---|---|
+| 1 镜像 | ✅ | `sha256:60e96e89…5164`、`created=2026-10-29T03:42:59Z`、`version_latest: 0.1.3` |
+| 2 升级 | ✅ | `0.1.3` / `started` / `auto` |
+| 3 属主接管 | ✅ | `node:node` → 手工打回 `root:root` → 重启后自动回到 `node:node`（含 `options.json`），无 `startup_failed` |
+| 4 身份与可写 | ✅ | `Uid: 1000 1000 1000 1000`、`node:node 755`、`writable`、`port:8099` |
+| 5 健康端点 | ✅ | `ready` 200（`database ok` / `migrations unknown` / `disk ok`）、`live` 200 |
+| 6 fail-fast ×3 | ✅ | `dir_missing/78`、`dir_readonly/78`、`invalid_port/78`，各一行 JSON |
+| 7 日志脱敏 | ✅ | `logLevel:"debug"` + `logLevelSource:"options"`，canary 计数 `0`，且存在 `level:20` 请求日志——**debug 真生效，不是假阴性** |
+| 8 options 链路 | ✅ | `ha_url` 改后文件跟随，属主仍 `node:node 600`，`logLevelSource` 未回落 |
+| 9 ingress | ⏳ | 无会话直连返回 401（已进 HA 认证层，非 502）、容器内 `/` 返 404 `Cannot GET /`；仅剩"点侧边栏面板"一步人工确认 |
+| 10 watchdog | ⬜ | `pause` 后 4.5 分钟仍未触发，Supervisor 无探活失败/重启日志——**平台侧未观测到，不判 App 缺陷**，复测方式见 `docs/23` §4 V6 |
+| 11 优雅关闭 | ✅ | 耗时 1 s、`die exitCode=0`、`stop accepting`(56.558) 早于 `prisma disconnected`(56.581)、无 `forced`/`budget` |
+| 12 环境 | ✅ | OS 18.3.1 / Supervisor 2026.10.4 / Core 2026.10.2 |
+
+**F-1 双向确认关闭**：第 3 步人为把 `/data` 打回 `root:root` 后重启能自动纠正；第 8 步 Supervisor 经 REST 重写 `options.json` 后文件仍为 `node:node 600`、`logLevelSource` 保持 `options`。0.1.2 阻断第 8 步的缺陷不再复现。
+
+第 9 步的 401 是**正确**结果：ingress 已把请求送到 HA 的认证层，浏览器带会话点面板才会落到容器的 404。
+
+第 10 步给后续的结论只有一条：**Supervisor 的探活周期大于 4.5 分钟，且未在 `pause` 下触发重启**。这既不能证明 watchdog 失效，也不能证明有效；App 侧已用第 5 步证明 `/health/live` 正常，故不阻塞 Phase 3 验收。复测须把观察窗口拉到 20 分钟并优先用 `kill -STOP 1`。
 
 ## 12. 官方参考
 

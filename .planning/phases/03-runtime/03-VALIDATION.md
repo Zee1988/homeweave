@@ -123,7 +123,11 @@ F-1 是 `options.json` 属主未被回收：0.1.2 的 entrypoint 只在 `/data` 
 
 真机同时暴露两处**手册口径**问题（非产品缺陷，已在 `docs/23` 修正）：容器名实际是 `app_<hash>_homeweave` 而非 `addon_homeweave`；`ha apps stop` 会移除容器，退出码与关闭日志必须在 stop 前用 `docker events`、`docker logs -f` 先监听。
 
-`0.1.3` 已发布（run `40813153148`，`verify-image` 11/11，新增第 11 项在真实镜像上复现并验证了 F-1）。复验时按 `docs/23_ON_DEVICE_TEST_RUNBOOK.md` 执行，**重点看第 8 步的 `logLevelSource` 是否为 `"options"`**——若不是，脱敏结论仍然只能算未验证。
+`0.1.3` 已在真机复验（2026-10-29，HA Green）：12 步执行完毕，**10 项通过、第 9 步仅剩人工点侧边栏面板、第 10 步 watchdog 平台侧未观测到**（`pause` 后 4.5 分钟未触发，非 App 缺陷；复测窗口须 20 分钟，见 `docs/23`）。逐项数值见 `docs/21` §11.4.1。
+
+**F-1 已双向确认关闭**：第 3 步把 `/data` 人为打回 `root:root` 后重启自动纠正；第 8 步 Supervisor 经 REST 重写 `options.json` 后仍为 `node:node 600`、`logLevelSource` 保持 `options`。
+
+第 7 步的脱敏结论从"未验证"转为**已验证**：canary 计数 `0`，且日志里确有 `level:20` 的请求记录，证明 `debug` 真生效而不是又一次假阴性。口径不变——访问日志本就不记录请求头，`0` 证明的是日志链路里不存在明文凭证，不等于掩码函数在真机上被执行过（后者由单元测试覆盖）。
 
 ### V1 添加仓库、安装与版本
 

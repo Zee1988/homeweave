@@ -241,6 +241,7 @@ docker exec "$C" cat /data/options.json
 | 实际现象 | 判读 |
 |---|---|
 | 404 / `Cannot GET /` | ✅ 正确，ingress → 8099 通 |
+| 未带 HA 会话直接请求 ingress 路径返回 401 | ✅ 正常，说明已进到 HA 的认证层；502 才是路由不通 |
 | 502 / 连接被拒 | ❌ ingress 到容器 8099 不通 |
 | 登录页 / HA 自身界面 | ❌ ingress 路由指错 |
 | 侧边栏没有 HomeWeave 面板 | ❌ `ingress_panel` 未生效 |
@@ -251,26 +252,50 @@ docker exec "$C" cat /data/options.json
 
 #### V6 watchdog
 
-目的：确认 `config.yaml` 的 `watchdog` URL 真的会让 Supervisor 重启一个失去响应的 App，并记录实测间隔（官方未文档化，实测值即事实）。
+目的：观测 Supervisor 的 `watchdog` 探活是否真的会重启一个失去响应的 App，并记录实测间隔。`config.yaml` 里配的是 `http://[HOST]:[PORT:8099]/health/live`。
+
+**先纠正预期（0.1.3 真机教训）**：Supervisor 的探活周期官方没有文档化，实测远大于 90 秒——0.1.3 真机里 `docker pause` 后 **4.5 分钟**容器仍在 `paused`、Supervisor 日志无任何重启或探活失败行。所以观察窗口要给到 **20 分钟**，而且：
+
+> **未触发不等于 App 缺陷。** watchdog 由 Supervisor 执行，App 侧唯一能做的只是让 `/health/live` 如实反映存活（第 5 步已验证）。20 分钟无动静只能记 **⬜ 未观测到（平台侧）**，不得记 ❌。
+
+注入挂死，两种任选：
+
+| 方式 | 命令 | 特点 |
+|---|---|---|
+| 冻结整个容器 | `docker pause "$C"` | 最接近真实挂死，但 `docker exec` 同时失效，只能在宿主侧观察 |
+| 只停主进程 | `docker exec "$C" kill -STOP 1` | 主进程不再响应 HTTP，`exec` 仍可用；容器未被 pause，Supervisor 真去重启时能成功 |
+
+**优先用 `kill -STOP 1`**：若 Supervisor 的探活是纯 TCP 连接判定，`pause` 下内核仍会完成握手，可能永远不触发；而探活若是 HTTP 判定，两种方式都会超时。用 `kill -STOP 1` 能同时覆盖"容器可被正常重启"这一条，结论更干净。
+
+观察（每 30 秒采样，最多 20 分钟）：
 
 ```bash
 date +%T
-docker pause "$C"
-sleep 90
-ha supervisor logs --lines 200 | grep -i homeweave
-date +%T
+docker exec "$C" kill -STOP 1
+for i in $(seq 1 40); do
+  sleep 30
+  printf '%s ' "$(date +%T)"
+  ha apps info homeweave | grep -E '^\s*(state|version):' | tr '\n' ' '
+  docker inspect -f ' created={{.Created}} status={{.State.Status}}' "$C" 2>/dev/null || echo ' container=gone'
+done
+ha supervisor logs --lines 400 | grep -i -E 'watchdog|homeweave|not responding'
 ```
 
-判据：90 秒内 Supervisor 日志出现探活失败/重启意图 → ✅，记录从 `pause` 到该日志的秒数。90 秒内无任何相关日志 → 记 ❌（未触发），仍要贴日志。
+判据（任一即 ✅，记录从注入到触发的秒数）：
 
-清理（`pause` 中的容器无法被正常 stop，Supervisor 重启可能失败）：
+1. 循环里 `created=` 变化（容器被重建）或 `status=` 从 `running` 变成其他，且 Supervisor 日志出现探活失败/重启行；
+2. 20 分钟到点仍无变化 → **⬜ 未观测到（平台侧，不判缺陷）**，附完整采样输出与 `ha supervisor logs` 相关段。
+
+清理：
 
 ```bash
+docker exec "$C" kill -CONT 1 2>/dev/null
 docker unpause "$C" 2>/dev/null
 ha apps restart homeweave
 ```
 
-> 若已被 Supervisor 重启，`pause` 随旧容器消失，`unpause` 报错属正常，直接 `ha apps restart`。
+> 若容器已被重启，`kill -CONT` / `unpause` 报错属正常，直接 `ha apps restart`。
+> 不要用 `kill -9 1` 代替：那会让容器退出，触发的是 Docker 的 restart policy 而不是 watchdog，会把结论搞错。
 
 #### V5 优雅关闭
 
@@ -308,7 +333,7 @@ ha apps start homeweave
 
 ---
 
-## 5. 三条"看着像失败、其实正常"的输出
+## 5. 看着像失败、其实正常 / 实测环境坑
 
 | 输出 | 正确判读 |
 |---|---|
@@ -316,6 +341,16 @@ ha apps start homeweave
 | `/data/homeweave.db` 是 0 字节，`database: ok` 仍成立 | 正常，但这条 `ok` 很弱：SQLite 把 0 字节文件当空库，健康检查用常量查询、不触碰任何表。**不要**据此认为数据库链路已验证，Phase 4 建表后必须重验 |
 | 启动日志 `startup: migrations unknown - /health/ready will not report migration state` | 同上，是刻意打的提醒，不是错误 |
 | `ports` 未发布、只能用 ingress 访问 | 正常，`config.yaml` 的既定设计，Phase 5 才有自家认证 |
+
+### 5.1 0.1.3 真机踩到的五个环境坑（都与产品无关）
+
+| 现象 | 原因 | 做法 |
+|---|---|---|
+| `docker pull` 卡在零速率，但 `ghcr.io` API 秒回 | HAOS 的 Docker daemon 配了 mirror（实测 `d.fashgh.com`），blob 走的镜像源拖死 | 加 `--platform linux/arm64` 重试；实测第三次、约 2m22s 成功。不要中途 `Ctrl-C`，半截 blob 只会更慢 |
+| `version_latest` 仍是旧版本 | `ha supervisor reload` / `ha apps reload` **不刷新 App 仓库** | 进仓库目录 `git fetch`，再 `ha refresh-updates`，然后 `ha apps info homeweave` 复查 |
+| `ha apps options` 命令不存在 | 该 Supervisor 版本 CLI 未提供 | 走 REST：`POST /addons/<slug>/options`，body 必须是 `{"options":{"log_level":"debug"}}`，裸对象返回 400 |
+| `docker cp` 到 Core 容器 `/tmp` 返回 0，文件却不可见 | Core 容器的 `/tmp` 与宿主不是同一层 | 改用 `docker exec -e OPT=...` 直接传参 |
+| `/tmp` 残留 `hw_*.log`、`stop.log`、`die.log` | 第 11 步的监听文件 | `rm -f /tmp/hw_*.log /tmp/stop.log /tmp/die.log`；HAOS 上 `rm` 可能触发确认弹窗，一次授权即可 |
 
 ---
 
@@ -333,7 +368,7 @@ ha apps start homeweave
 | V7 脱敏 | ✅ / ❌ | `grep -c` 的数字 |
 | V8 options.json | ✅ / ❌ | 改前/改后的 `ha_url` |
 | V9 ingress | ✅ / ❌ | 实际响应（人工填） |
-| V6 watchdog | ✅ / ❌ | 触发间隔秒数 / 未触发 |
+| V6 watchdog | ✅ / ⬜ | 触发间隔秒数；⬜ = 20 分钟未触发（平台侧，不判 App 缺陷） |
 | V5 优雅关闭 | ✅ / ❌ | 耗时、`exit=`、日志顺序 |
 
 补充信息必填：HAOS 版本、Supervisor 版本、Core 版本、`/data` 属主、`ha apps stop` 耗时、watchdog 间隔。这几项用于回填 `docs/21` §11.1 与 `03-VALIDATION.md`。
