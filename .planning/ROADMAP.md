@@ -137,10 +137,17 @@
   4. 从旧 schema 升级到新 schema 后，用户可见当前 schema 版本与迁移结果（日志或页面可见），且代码中不存在任何自动 reset / drop 的路径。
 **Plans**: TBD
 
-计划切片（供 plan-phase 细化，预期 3 plans）：
-- Prisma schema 与初始迁移、`/data` 路径固化
-- 启动迁移流程：备份 → `migrate deploy` → 结果记录 → 失败 fail-fast
-- 升级/恢复演练脚本与容器模拟测试（重启保留、升级保留、失败注入）
+**规划期约定**（详见 `.planning/phases/04-persistence/04-CONTEXT.md`，4 个灰区已定案）：
+
+- **D-14 显式偏差**：SC-2 写的是"执行 `prisma migrate deploy`"，实现改为**自写执行器**。理由已实测——`prisma@7.10.1` 依赖 `@prisma/engines`，其中的 `schema-engine` 是 19.8 MB 原生二进制，仓库内无任何 wasm 替代；移入运行时等于推翻 Phase 3 D-05a 的 `RUST_FREE` 语义。语义目标（受控应用、失败 fail-fast、不清库）不变，但验收**不得声称"已用官方 CLI 验证"**。
+- **SC-4 口径**：禁止整库级 reset/drop（`migrate reset`、删改 `*.db`、`PRAGMA writable_schema`）；允许 `migration.sql` 内的表级 `DROP TABLE`，条件是同事务且有对应 `INSERT INTO ... SELECT` 搬迁。Prisma 对 SQLite 的表重定义模式天然含 `DROP TABLE`，按字面"任何地方不得有 DROP"验收无法成立。
+- 实测事实（不得凭记忆改写）：`_prisma_migrations.checksum` = **原始文件字节的 sha256 hex**（`.trim()` 后不匹配）；`finished_at`/`started_at` 是**毫秒整数**；当前 `journal_mode = delete`（非 WAL）。
+- 备份手段限定 `VACUUM INTO`：`PrismaService` 传的是配置对象，拿不到 `Database` 句柄，`db.backup()` 不可用。
+
+计划切片（供 plan-phase 细化，预期 3 plans；原第 1 条"Prisma schema 与初始迁移"已在 Phase 3 完成，不再是本阶段工作）：
+- 迁移执行器：pending 判定 → 事务应用 → 写 Prisma 兼容元数据 → drift 校验（D-01/D-13）
+- 备份与启动编排：`VACUUM INTO` → 保留 3 份 → 失败阻断 → 失败 exit 78（D-03/D-04/D-05/D-07/D-12）
+- `ready` 的 `migrations` 参与判定、版本可见性、容器模拟（重启保留、升级保留、失败注入）+ 恢复 Runbook（D-09~D-11、DATA-01、D-06）
 
 **验证类**: 容器模拟（卷重建、旧库升级、迁移失败注入）+ 静态（备份保留策略与迁移脚本单测）。
 

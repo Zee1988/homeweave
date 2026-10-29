@@ -1,17 +1,17 @@
 ---
 gsd_state_version: "1.0"
 milestone: v1.0
-current_phase: 03
-current_phase_name: 运行时骨架
-status: executing
-stopped_at: Completed 03-05-PLAN.md
+current_phase: 04
+current_phase_name: 数据持久化与受控迁移
+status: planning
+stopped_at: Phase 4 context gathered (04-CONTEXT.md)
 last_updated: "2026-10-29T00:00:00.000Z"
 last_activity: 2026-10-29
-last_activity_desc: 0.1.3 真机验收 12 步全闭合（11 通过 / 第 10 步 watchdog 结案为平台侧 TCP 探活，不覆盖挂死）；F-1 双向确认关闭，脱敏由"未验证"转已验证，ingress 面板人工确认
+last_activity_desc: Phase 3 验收闭合（11/12 + watchdog 平台侧 ⬜）；Phase 4 discuss 完成，4 个灰区全定：自写迁移执行器（零新增依赖）、备份仅迁移前 3 份、失败硬 fail-fast exit 78、版本可见性落日志+ready
 state_head: 19ec03d5badbfe45b284b5af3664f920263e330c
 progress:
   total_phases: 7
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 15
   completed_plans: 15
 ---
@@ -23,16 +23,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-27)
 
 **Core value:** HAOS 用户添加仓库 → 安装 → 启动 → 在 HA 侧边栏打开一个能跑的 HomeWeave。
-**Current focus:** Phase 03 — 运行时骨架
+**Current focus:** Phase 04 — 数据持久化与受控迁移
 
 ## Current Position
 
-Phase: 03 (运行时骨架) — EXECUTING
-Plan: 5 of 5
-Status: Ready to verify
-Last activity: 2026-10-29 — 0.1.3 真机验收 12 步全闭合：11 项通过（含 F-1 双向确认关闭、脱敏由"未验证"转已验证、ingress 面板人工确认落到 404），第 10 步 watchdog 已结案——冻结 PID1 后 HTTP 探活 5.0 s 超时、TCP 握手 0.7 ms 成功，20 分钟 40 次采样零变化，判定该版本 watchdog 走 TCP connect，**平台不覆盖"进程活着但不响应"**，Phase 4+ 需要时由 App 内自检兜底
+Phase: 04 (数据持久化与受控迁移) — PLANNING
+Plan: 0 of TBD
+Status: Context gathered
+Last activity: 2026-10-29 — Phase 3 验收闭合（12 步：11 ✅ / watchdog ⬜ 平台侧 TCP 探活）；Phase 4 discuss 完成，4 个灰区定案：自写迁移执行器 + Prisma 兼容元数据表（零新增依赖，因 `prisma` CLI 会带入 19.8 MB `schema-engine` 原生二进制）、备份仅迁移前且保留 3 份（`VACUUM INTO`）、迁移失败硬 fail-fast `exit 78` 且不自动覆盖数据库、schema 版本同时落启动日志与 `/health/ready`
 
-Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 15/15 plans executed)
+Progress: [███░░░░░░░] 43%  (3/7 phases verified, 15/15 plans executed)
 
 ## Performance Metrics
 
@@ -142,16 +142,18 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-28T00:00:00.000Z
-Stopped at: Completed 03-05-PLAN.md
-Resume file: .planning/phases/03-runtime/03-05-SUMMARY.md
+Last session: 2026-10-29T00:00:00.000Z
+Stopped at: Phase 4 context gathered
+Resume file: .planning/phases/04-persistence/04-CONTEXT.md
 
-**Next action:** 在真实 HAOS 上安装 `0.1.1` 并做 Phase 3 阶段验证（`/gsd-verify-work`），三项只能在真机确认：`/data` 属主是否让 `node` 可写、Supervisor 的 `docker stop` 投递与耗时、watchdog 是否真的重启。CI 已覆盖容器级别的同类断言，但不能替代 Supervisor 的挂载与信号路径。不要先开 Phase 4。
+**Next action:** `/gsd-plan-phase 4`。规划时必须核对一件会决定 D-01 可行性的事实：`Dockerfile` 只 COPY `dist` / `node_modules` / `prisma` / `package.json`，需确认 `prisma/migrations/` 确实随 `prisma` 目录进入 runtime 镜像——若不进，自写执行器在容器里根本读不到 SQL。
 
-执行前必须先接受这三条事实：
+Phase 3 遗留的三条真机风险已全部闭合（2026-10-29，HAOS 18.3.1）：
 
-1. **arm64 从未运行过**。`verify-image` 只执行了 amd64 镜像；HAOS 常见为 aarch64，因此「镜像在真实设备上能启动」仍是 Phase 03 的待验证项，不是已完成的结论。
-2. Phase 1 的 HAOS 实机项同样未验证。前两个阶段的静态结论尚未合流为一次真机验收。
-3. **`/data` 归属未知（研究期 A2，最大残余风险）**：`Dockerfile` 是 `USER node`，而 Supervisor 挂载的 `/data` 常属 root；若真机如此，进程会启动即 exit 78 而本地全绿。03-05 已把它列入「残余风险」，要求真机确认后再决定是否改权限，禁止未验证就把 `USER node` 删掉。
+1. **arm64 已运行过**：真机为 aarch64，镜像可启动，`/health/ready` 200。
+2. Phase 1 的静态结论已随同一次真机验收合流（属主接管、`Uid` ×4 全 1000）。
+3. **`/data` 归属已确认可用**：`root:root` 被启动逻辑纠正为 `node:node`，`USER node` 无需改动。
+
+唯一未覆盖项是 Supervisor watchdog：该版本判 TCP connect，**发现不了"进程活着但不响应"的挂死**。App 内自检兜底已记入 `04-CONTEXT.md` 的 Deferred，不在 Phase 4 范围。
 
 发布链路的运维细节见 `docs/23_IMAGE_RELEASE_RUNBOOK.md`；再次发布只需 `gh workflow run release.yml -f version=<v> -f confirm_version=<v>`。
