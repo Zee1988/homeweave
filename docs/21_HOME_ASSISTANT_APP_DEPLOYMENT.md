@@ -226,6 +226,59 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 
 `0.1.2` 在真机上的复验（V2 与 V4–V9）仍是**未执行**项，见 `.planning/phases/03-runtime/03-VALIDATION.md`。可交给执行方的自包含步骤见 `docs/23_ON_DEVICE_TEST_RUNBOOK.md`。
 
+### 11.3 `0.1.2` 真机验收：1–7 通过，F-1 阻断第 8 步
+
+在 HA Green 上实机执行（容器 `app_7cbb973f_homeweave`，`state: started`、`/health/live` 与 `/health/ready` 均 200、`/data` 挂载正常）。
+
+| 步骤 | 结果 | 说明 |
+|---|---|---|
+| 1–6 安装 / 启动 / 健康 / 持久化 | ✅ | — |
+| 7 fail-fast | ✅ | 须用 `docker exec -u node` 口径，见 §11.3.2 |
+| 8 日志脱敏 | ❌ | canary 计数 0，但 `logLevel` 实为 `info`——假阴性 |
+| 9–11 | ⏸ | 按"失败即停"未执行 |
+
+#### 11.3.1 F-1（阻断，`0.1.3` 已修）：运行期改写的 `options.json` 属主未被回收
+
+**现象。** 经 Supervisor 把 `log_level` 改成 `debug`（HTTP 200）后重启，`/data/options.json` 内容已是 `debug`，启动日志却是 `"logLevel":"info","logLevelSource":"fallback"`。以 `-u node` 读文件直接 `Permission denied`：
+
+```
+-rw------- 1 root root 41 Oct 29 11:09 options.json
+```
+
+`stop → start` 确定性复现，不是竞态。
+
+**根因（两处叠加）。**
+
+1. `docker/entrypoint.sh` 的短路只看 `/data` 目录本身的 uid。首次安装时 `/data` 是 root，递归 `chown` 生效；此后目录已是 1000，**任何重启都跳过递归 chown**，而 Supervisor 在运行期改选项时会以 `root:root 0600` 重写 `options.json`，该文件从此对 uid 1000 永久不可读。
+2. `apps/api/src/config/log-level.ts` 把 `EACCES` 与"文件不存在"同样当作"没有配置"，静默回落 `info`，不产生任何日志。注释中的假设 A3（"options 文件归 Supervisor 所有，应用可读"）在 HAOS 上不成立。
+
+后果是所有运行期可改的 option（`log_level`、`ha_url` 及后续新增项）都会静默失效，只能靠 `logLevelSource` 反推。
+
+**修法（`0.1.3`）。**
+
+| 文件 | 改动 |
+|---|---|
+| `docker/entrypoint.sh` | 短路条件改为"`/data` 目录本身或其下任一条目不属于 node"，才执行 `chown -R` |
+| `apps/api/src/config/log-level.ts` | `readOptionsFile` 仅在 `EACCES`/`EPERM` 时抛出；`resolveLogLevel` 据此返回新值 `source: 'unreadable'`，不再与 `fallback` 合并 |
+| `apps/api/src/main.ts` | `unreadable` 时输出 `event: "options_unreadable"` 的 warn |
+| `scripts/ci/assert-image.sh` | 新增第 11 项：向运行中的容器写入 `root:root 0600` 的 `options.json`，`docker restart` 后断言 `-u node` 可读且启动日志为 `logLevelSource: "options"` |
+
+第 11 项是这次的关键产出：1–10 项都不重启容器，因此 0.1.2 的 `verify-image` 10/10 全绿却漏掉了这个必现缺陷。
+
+**顺带确认的语义**：Supervisor 改选项后**不会**自动重启 App，配置只在下次启动时被读取。所以"改完不生效"要先确认重启过，再怀疑属主。
+
+#### 11.3.2 F-2（手册口径问题，非产品缺陷）
+
+`ha apps stop` 之后 Supervisor 会移除容器，`docker inspect -f '{{.State.ExitCode}}'` 返回空。第 11 步的退出码改从 `docker events` 的 `die` 事件取，见 `docs/23` §4。
+
+同理，fail-fast 三例必须用 `docker exec -u node` 跑：以 root 跑时 `access(W_OK)` 被 `CAP_DAC_OVERRIDE` 放行，`/proc` 上的写入失败会落到 `write_failed` 而非 `dir_readonly`，判据就不成立了。
+
+#### 11.3.3 F-3（预期行为，但要记住它证明得很少）
+
+`/data/homeweave.db` 为 0 字节、`migrations: unknown` 是设计使然：镜像不含 prisma CLI、不执行迁移（D-06），表由 Phase 4 建。
+
+要注意 `database: ok` 在空库上是**弱证据**：SQLite 打开 0 字节文件视为空库，`/health/ready` 的 database 检查用的是常量查询，不触碰任何表，因此照样返回 `ok`。Phase 4 建表后必须重验一次，不能把这次的 `ok` 当作"数据库链路已验证"。
+
 ## 12. 官方参考
 
 - Apps 开发总览：https://developers.home-assistant.io/docs/apps

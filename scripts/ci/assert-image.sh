@@ -12,7 +12,7 @@
 # 02-04). That link is the whole reason the file lives under scripts/ci/: an
 # assertion nobody invokes is a comment with extra steps.
 #
-# Ten checks, in order:
+# Eleven checks, in order:
 #   1. devDependencies absent      (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)
 #   2. sources absent              (no /app/src, no *.ts, no *.spec.ts outside node_modules)
 #   3. source maps absent          (no *.map outside node_modules)
@@ -23,6 +23,7 @@
 #   8. no secret in the filesystem (.env / .env.* / *.pem / *.key outside node_modules)
 #   9. liveness endpoint answers    (/health/live == 200 from inside the running container)
 #  10. unprivileged runtime user   (uid 1000 and a writable /data, after the root entrypoint dropped)
+#  11. a root-owned options.json is reclaimed on restart (0.1.3, defect F-1)
 #
 # Exit codes: 0 = all checks passed, 1 = at least one failed or a precondition was
 # not met. There is no third outcome and no "skipped" exit path: an unrunnable check
@@ -87,9 +88,9 @@ leaked=$(docker run --rm "$IMAGE" sh -c '
   done
 ')
 if [ -z "$leaked" ]; then
-  pass "1/10 devDependencies absent (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)"
+  pass "1/11 devDependencies absent (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)"
 else
-  fail "1/10 devDependencies present in the image: $(echo "$leaked" | tr '\n' ' ')"
+  fail "1/11 devDependencies present in the image: $(echo "$leaked" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -100,9 +101,9 @@ sources=$(docker run --rm "$IMAGE" sh -c '
   if [ -d /app/src ]; then echo "LEAK:/app/src"; fi
 ')
 if [ -z "$sources" ]; then
-  pass "2/10 sources absent (no /app/src, no *.ts, no *.spec.ts outside node_modules)"
+  pass "2/11 sources absent (no /app/src, no *.ts, no *.spec.ts outside node_modules)"
 else
-  fail "2/10 source files present in the image: $(echo "$sources" | tr '\n' ' ')"
+  fail "2/11 source files present in the image: $(echo "$sources" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -114,9 +115,9 @@ maps=$(docker run --rm "$IMAGE" sh -c '
   find /app -path /app/node_modules -prune -o -type f -name "*.map" -print
 ')
 if [ -z "$maps" ]; then
-  pass "3/10 no *.map outside node_modules"
+  pass "3/11 no *.map outside node_modules"
 else
-  fail "3/10 source maps present in the image: $(echo "$maps" | tr '\n' ' ')"
+  fail "3/11 source maps present in the image: $(echo "$maps" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -135,9 +136,9 @@ artifacts=$(docker run --rm "$IMAGE" sh -c '
   exit "$missing"
 ' || true)
 if [ -n "$artifacts" ] && ! echo "$artifacts" | grep -q '^MISSING:'; then
-  pass "4/10 artifacts present ($(echo "$artifacts" | tr '\n' ' '))"
+  pass "4/11 artifacts present ($(echo "$artifacts" | tr '\n' ' '))"
 else
-  fail "4/10 artifacts missing from the image: $(echo "$artifacts" | tr '\n' ' ')"
+  fail "4/11 artifacts missing from the image: $(echo "$artifacts" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -172,22 +173,22 @@ case "$decision" in
       *) engine_target="" ;;
     esac
     if [ -z "$engine_target" ]; then
-      fail "5/10 NATIVE_ENGINE but the container reported an arch with no known engine target: '$container_arch'"
+      fail "5/11 NATIVE_ENGINE but the container reported an arch with no known engine target: '$container_arch'"
     else
       engine_file=$(docker run --rm "$IMAGE" sh -c "find /app -name '*${engine_target}*.so.node' -print | head -n 1")
       if [ -n "$engine_file" ]; then
-        pass "5/10 engine matches architecture $container_arch ($engine_target): $engine_file"
+        pass "5/11 engine matches architecture $container_arch ($engine_target): $engine_file"
       else
-        fail "5/10 NATIVE_ENGINE but no engine matching '$engine_target' exists for arch '$container_arch'"
+        fail "5/11 NATIVE_ENGINE but no engine matching '$engine_target' exists for arch '$container_arch'"
       fi
     fi
     ;;
   RUST_FREE)
     echo "  - skipped (RUST_FREE): Prisma 7 uses the WASM query compiler, there is no native engine file to match against process.arch"
-    pass "5/10 engine architecture check resolved by ENGINE_DECISION=RUST_FREE"
+    pass "5/11 engine architecture check resolved by ENGINE_DECISION=RUST_FREE"
     ;;
   *)
-    fail "5/10 ENGINE_DECISION unreadable or invalid at $ENGINE_DECISION_FILE (expected NATIVE_ENGINE or RUST_FREE, got '${decision:-<empty>}')"
+    fail "5/11 ENGINE_DECISION unreadable or invalid at $ENGINE_DECISION_FILE (expected NATIVE_ENGINE or RUST_FREE, got '${decision:-<empty>}')"
     ;;
 esac
 
@@ -213,9 +214,9 @@ done
 
 running=$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)
 if [ "$started" -eq 1 ] && [ "$running" = "true" ]; then
-  pass "6/10 container started and is still running (startup log line seen, State.Running=true)"
+  pass "6/11 container started and is still running (startup log line seen, State.Running=true)"
 else
-  fail "6/10 container did not start cleanly (startup log seen=$started, State.Running=$running)"
+  fail "6/11 container did not start cleanly (startup log seen=$started, State.Running=$running)"
   docker logs "$cid" 2>&1 | tail -n 40 || true
 fi
 
@@ -228,9 +229,9 @@ fi
 history_hits=$(docker history --no-trunc "$IMAGE" 2>/dev/null | \
   grep -E 'ghp_|github_pat_|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY' || true)
 if [ -z "$history_hits" ]; then
-  pass "7/10 no secret pattern in docker history --no-trunc"
+  pass "7/11 no secret pattern in docker history --no-trunc"
 else
-  fail "7/10 secret pattern found in the image history: $(echo "$history_hits" | head -n 3 | cut -c1-200 | tr '\n' ' ')"
+  fail "7/11 secret pattern found in the image history: $(echo "$history_hits" | head -n 3 | cut -c1-200 | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -243,9 +244,9 @@ fs_hits=$(docker run --rm "$IMAGE" sh -c '
   find / -path "*/node_modules/*" -prune -o -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" \) -print 2>/dev/null
 ' || true)
 if [ -z "$fs_hits" ]; then
-  pass "8/10 no .env / .env.* / *.pem / *.key outside node_modules"
+  pass "8/11 no .env / .env.* / *.pem / *.key outside node_modules"
 else
-  fail "8/10 secret files found in the image filesystem: $(echo "$fs_hits" | tr '\n' ' ')"
+  fail "8/11 secret files found in the image filesystem: $(echo "$fs_hits" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -285,9 +286,9 @@ while [ "$attempts" -lt 10 ]; do
 done
 
 if [ "$live_ok" -eq 1 ]; then
-  pass "9/10 /health/live answered 200 inside the container after $attempts attempt(s)"
+  pass "9/11 /health/live answered 200 inside the container after $attempts attempt(s)"
 else
-  fail "9/10 /health/live did not answer 200 inside the container after $attempts attempt(s): $live_detail"
+  fail "9/11 /health/live did not answer 200 inside the container after $attempts attempt(s): $live_detail"
   docker logs "$cid" 2>&1 | tail -n 20 || true
 fi
 
@@ -322,9 +323,71 @@ if [ "$runtime_uid" = "1000" ]; then
 fi
 
 if [ "$runtime_uid" = "1000" ] && [ "$data_writable" -eq 1 ]; then
-  pass "10/10 the server runs as uid 1000 and /data is writable"
+  pass "10/11 the server runs as uid 1000 and /data is writable"
 else
-  fail "10/10 the server is not the unprivileged runtime user, or /data is not writable (uid='${runtime_uid:-<none>}', writable=$data_writable); the entrypoint did not complete its privilege drop"
+  fail "10/11 the server is not the unprivileged runtime user, or /data is not writable (uid='${runtime_uid:-<none>}', writable=$data_writable); the entrypoint did not complete its privilege drop"
+fi
+
+# ---------------------------------------------------------------------------
+# 11. A root-owned options.json is reclaimed on restart (0.1.3, defect F-1).
+#
+#     0.1.2 skipped its recursive chown as soon as /data itself was uid 1000. The
+#     Supervisor rewrites /data/options.json as root:root 0600 every time an option
+#     changes, so after the first boot that file stayed unreadable by the server:
+#     log_level=debug was written to it, and startup_ok still reported
+#     logLevel=info / logLevelSource=fallback. On device this was 0.1.2's only failing
+#     acceptance step, and checks 1-10 cannot see it -- none of them restart the
+#     container with a foreign-owned file sitting in /data.
+# ---------------------------------------------------------------------------
+options_ok=0
+options_detail=""
+options_since=0
+if [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)" = "true" ]; then
+  if docker exec "$cid" sh -c 'printf "%s" "{\"log_level\":\"debug\"}" > /data/options.json && chown root:root /data/options.json && chmod 600 /data/options.json' 2>/dev/null; then
+    planted=$(docker exec "$cid" stat -c '%U:%G %a' /data/options.json 2>/dev/null | tr -d '\r\n')
+    options_since=$(date +%s)
+    docker restart "$cid" >/dev/null 2>&1 || true
+
+    deadline=$(( $(date +%s) + 60 ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      if docker logs --since "$options_since" "$cid" 2>&1 | grep -q '"event":"startup_ok"'; then
+        break
+      fi
+      sleep 1
+    done
+
+    boot_logs=$(docker logs --since "$options_since" "$cid" 2>&1 || true)
+    readback=$(docker exec -u node "$cid" cat /data/options.json 2>&1 | tr -d '\r\n')
+    readable=0
+    case "$readback" in
+      *'"log_level":"debug"'*) readable=1 ;;
+    esac
+
+    if [ "$planted" = "root:root 600" ] && [ "$readable" -eq 1 ] && \
+       printf '%s' "$boot_logs" | grep -q '"logLevel":"debug"' && \
+       printf '%s' "$boot_logs" | grep -q '"logLevelSource":"options"'; then
+      options_ok=1
+    else
+      options_detail="planted='${planted:-<none>}' readback='${readback:-<none>}'"
+      if printf '%s' "$boot_logs" | grep -q '"logLevelSource":"fallback"'; then
+        options_detail="$options_detail (startup still reports logLevelSource=fallback)"
+      fi
+      if printf '%s' "$boot_logs" | grep -q '"event":"options_unreadable"'; then
+        options_detail="$options_detail (options_unreadable warning was emitted)"
+      fi
+    fi
+  else
+    options_detail="could not plant /data/options.json as root:root"
+  fi
+else
+  options_detail="the container from check 6 is not running"
+fi
+
+if [ "$options_ok" -eq 1 ]; then
+  pass "11/11 a root:root 0600 options.json is reclaimed on restart (log_level=debug took effect, logLevelSource=options)"
+else
+  fail "11/11 a root-owned options.json was not reclaimed on restart: ${options_detail}"
+  docker logs --since "$options_since" "$cid" 2>&1 | tail -n 20 || true
 fi
 
 echo
@@ -332,4 +395,4 @@ if [ "$failures" -ne 0 ]; then
   printf '✗ assert-image failed: %s check(s) failed\n' "$failures" >&2
   exit 1
 fi
-printf '✓ all 10 image assertions passed\n'
+printf '✓ all 11 image assertions passed\n'

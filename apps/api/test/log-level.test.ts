@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -67,6 +67,66 @@ test('a reader that throws does not escape', () => {
     throw new Error('EACCES: permission denied');
   });
   assert.deepEqual(result, { level: 'info', source: 'fallback' });
+});
+
+// F-1 (found on HAOS, 0.1.2): the Supervisor rewrites /data/options.json as root:root
+// 0600 when an option changes, and the app runs as uid 1000. "There is a file I cannot
+// read" must not report the same thing as "there is no file":
+//   unreadable -> the operator's option is being ignored; fix /data ownership
+//   fallback   -> nobody has ever set an option
+test('a permission error is reported as unreadable, not as a missing file', () => {
+  const deny = () => {
+    throw Object.assign(new Error('EACCES: permission denied, open /data/options.json'), {
+      code: 'EACCES',
+    });
+  };
+  assert.deepEqual(resolveLogLevel({}, deny), { level: 'info', source: 'unreadable' });
+
+  const deniedEperm = () => {
+    throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+  };
+  assert.deepEqual(resolveLogLevel({}, deniedEperm), { level: 'info', source: 'unreadable' });
+});
+
+test('LOG_LEVEL still wins over an unreadable options file', () => {
+  const deny = () => {
+    throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+  };
+  assert.deepEqual(resolveLogLevel({ LOG_LEVEL: 'warn' }, deny), {
+    level: 'warn',
+    source: 'env',
+  });
+});
+
+test('readOptionsFile rethrows a permission error but swallows a missing file', () => {
+  // chmod 000 has no effect on Windows; as root (some CI containers) the file stays
+  // readable. Both cases are skipped rather than asserted, since the mode bits prove
+  // nothing there.
+  if (process.platform === 'win32') return;
+
+  withTempDir((dir) => {
+    const optionsPath = path.join(dir, 'options.json');
+    writeFileSync(optionsPath, '{ "log_level": "debug" }');
+    try {
+      chmodSync(optionsPath, 0o000);
+    } catch {
+      return;
+    }
+
+    let thrown: unknown;
+    try {
+      readOptionsFile(optionsPath);
+    } catch (error) {
+      thrown = error;
+    }
+
+    if (thrown === undefined) {
+      // Readable despite 0000: the test process is root, so there is nothing to prove.
+      assert.equal(process.getuid?.(), 0);
+      return;
+    }
+    assert.match(String((thrown as NodeJS.ErrnoException).code), /^(EACCES|EPERM)$/);
+  });
 });
 
 test('the level list matches the options schema the Supervisor validates against', () => {

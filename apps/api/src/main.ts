@@ -4,6 +4,7 @@ import { NestFactory } from '@nestjs/core';
 
 import { AppModule, setAppLogLevel } from './app.module';
 import { loadAppConfig } from './config/app-config';
+import { OPTIONS_FILE_PATH } from './config/log-level';
 import { toStartupFailure, type StartupFailure } from './config/errors';
 import type { WriteProbeState } from './health/checks/database.check';
 import { MIGRATIONS_DIR, STARTUP_PROBE } from './health/health-checks';
@@ -100,6 +101,18 @@ export async function bootstrap(): Promise<void> {
     const logger = app.get(PinoLoggerService);
     bootLogger = logger;
     app.useLogger(logger);
+
+    // F-1, found on HAOS during 0.1.2: the Supervisor rewrites /data/options.json as
+    // root:root 0600 when an option changes, so the file can exist and still be
+    // unreadable by uid 1000. Until 0.1.3 the only trace was `logLevelSource: "fallback"`
+    // inside the startup record -- indistinguishable from "nobody ever set an option".
+    if (config.logLevelSource === 'unreadable') {
+      logger.warn({
+        event: 'options_unreadable',
+        path: OPTIONS_FILE_PATH,
+        msg: 'options file exists but is not readable by this user - options were ignored',
+      });
+    }
 
     // `useProcessExit: true` is not optional. Without it Nest's handler replays the signal
     // at itself (`process.kill(pid, signal)`), so SIGTERM becomes exit 143 and the async

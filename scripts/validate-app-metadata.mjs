@@ -95,10 +95,13 @@ const LOG_LEVELS = ['info', 'debug', 'warn'];
 // chain is trusted: it is the tripwire that fires when a hand edit bypasses the chain.
 // `version` moved 0.1.0 -> 0.1.1 for the Phase 3 release (D-01b in 01-CONTEXT.md): the 0.1.0
 // image is already published and tags are never overwritten, so runtime-behaviour changes need
-// a new one. This pin must track the released version exactly -- it is not a compatibility floor.
+// a new one. 0.1.2 -> 0.1.3 was the first on-device defect (F-1: a root-owned
+// /data/options.json made live options silently ineffective), and the entrypoint lives in the
+// image, so it needed a new tag rather than a metadata edit. This pin must track the released
+// version exactly -- it is not a compatibility floor.
 const CONTRACT = {
   image: 'ghcr.io/zee1988/homeweave-ha-app',
-  version: '0.1.2',
+  version: '0.1.3',
   homeassistant: '2026.10.0',
   slug: 'homeweave',
 };

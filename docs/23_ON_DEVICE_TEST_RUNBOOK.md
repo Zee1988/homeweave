@@ -1,6 +1,8 @@
-# 23. 0.1.2 真机验收执行手册
+# 23. 0.1.3 真机验收执行手册
 
-> 用途：把本文件**整段**交给一个能 SSH 登录 HAOS 的执行方（人或 AI），它不需要读源码即可独立跑完 0.1.2 的真机验收并回报。
+> 用途：把本文件**整段**交给一个能 SSH 登录 HAOS 的执行方（人或 AI），它不需要读源码即可独立跑完 0.1.3 的真机验收并回报。
+>
+> 版本史：0.1.2 的真机验收跑到第 8 步失败（F-1，见 `docs/21` §11.3），本文件已按那次实测修正三处口径——容器名、fail-fast 的 `-u node` 口径、优雅关闭取退出码的方式。
 > 上游契约：`docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` §11；用例来源 `.planning/phases/03-runtime/03-VALIDATION.md`。
 
 ---
@@ -29,15 +31,16 @@
 | 项 | 值 |
 |---|---|
 | App | HomeWeave（HA OS App / add-on） |
-| slug / 容器名 | `homeweave` / `addon_homeweave` |
+| slug / 容器名 | `homeweave` / `app_<hash>_homeweave`（真机实测是 `app_7cbb973f_homeweave`，不要假设成 `addon_homeweave`） |
 | 端口 | `8099`（仅容器内，不对外发布） |
-| 镜像 | `ghcr.io/zee1988/homeweave-ha-app:0.1.2` |
+| 镜像 | `ghcr.io/zee1988/homeweave-ha-app:0.1.3` |
 | 数据目录 | `/data`（Supervisor 挂载到宿主 `.../apps/data/<hash>_homeweave`） |
 
-本版要验的两件 0.1.1 缺陷修复：
+本版要验的三件事：
 
 1. **`/data` 属主接管**：0.1.1 以 uid 1000 直启，而 Supervisor 挂来的 `/data` 为 `root:root`，全新安装必定 `exit 78 / dir_readonly`。0.1.2 改为 root entrypoint → `chown -R node:node /data` → `exec gosu node`，**服务器进程仍是 uid 1000**。
 2. **侧边栏入口**：`ingress_panel: true`，装好后侧边栏直接出现 HomeWeave 面板。
+3. **F-1 修复**（0.1.3 新增）：Supervisor 在运行期会以 `root:root 0600` 重写 `/data/options.json`，0.1.2 只在 `/data` 目录本身非 1000 时才递归 chown，导致该文件从此不可读、所有 option 静默失效。0.1.3 把判定改为"树里还有不属于 node 的条目就 chown"，并在应用侧区分 `source: "unreadable"`。**步骤 8 就是这条的验证点。**
 
 不在本次范围：UI 功能（Phase 5）、数据库建表与迁移（Phase 4）、对外端口（`ports` 故意关闭）。
 
@@ -54,10 +57,11 @@
 > CLI 差异：若 `ha apps` 不被识别，全文**整体**替换为 `ha addons`，不要混用。
 
 ```bash
-docker ps --format '{{.Names}}\t{{.Image}}' | grep -i homeweave
+C=$(docker ps --format '{{.Names}}' | grep -i homeweave | head -n 1)
+echo "C=$C"
 ```
 
-若打印的不是 `addon_homeweave`，后续命令里的容器名要相应替换。
+下文所有命令用 `$C` 表示容器名，**不要照抄成 `"$C"`**：Supervisor 实际创建的是 `app_<hash>_homeweave`（真机为 `app_7cbb973f_homeweave`），照抄会全部失败。`$C` 只对当前 shell 会话有效，断开重连后需重新定义。
 
 ---
 
@@ -67,11 +71,11 @@ GHCR 在部分网络下不可达（0.1.1 实测：某加速器 19 分钟 0 字�
 
 ```bash
 ha apps info homeweave | grep -E 'version|state|boot'
-docker image inspect ghcr.io/zee1988/homeweave-ha-app:0.1.2 --format '{{.Id}} created={{.Created}}'
+docker image inspect ghcr.io/zee1988/homeweave-ha-app:0.1.3 --format '{{.Id}} created={{.Created}}'
 ```
 
 - 第二条能打印镜像 ID → 镜像已在本地，HA 不会再去拉。
-- 报 `No such image` → 执行 `timeout 120 docker pull ghcr.io/zee1988/homeweave-ha-app:0.1.2`：
+- 报 `No such image` → 执行 `timeout 120 docker pull ghcr.io/zee1988/homeweave-ha-app:0.1.3`：
   - 出现持续下载进度 → 等它完成；
   - 120 秒无进度 → **停止并回报"镜像拉取不可达"**，不要换代理、不要手工拼 blob、不要本地构建。后续由人决定（历史可行路径见 `docs/21` §11.1）。
 
@@ -83,7 +87,7 @@ sleep 20
 ha apps info homeweave | grep -E 'version|state|boot'
 ```
 
-预期 `version: 0.1.2`、`state: started`、`boot: auto`。若 `state: error`，先看 `ha apps logs homeweave` 再决定是否继续 V2。
+预期 `version: 0.1.3`、`state: started`、`boot: auto`。若 `state: error`，先看 `ha apps logs homeweave` 再决定是否继续 V2。
 
 ---
 
@@ -98,12 +102,12 @@ ha apps info homeweave | grep -E 'version|state|boot'
 0.1.1 的 `exit 78` 只在 `/data` 为 `root:root` 时出现。若此前手工 `chown` 过，直接重启**看不出**修复是否生效。所以先把属主改回 `root:root`，人为复现缺陷前提。
 
 ```bash
-docker exec addon_homeweave stat -c '%U:%G' /data
-docker exec addon_homeweave chown -R root:root /data
-docker exec addon_homeweave stat -c '%U:%G' /data
+docker exec "$C" stat -c '%U:%G' /data
+docker exec "$C" chown -R root:root /data
+docker exec "$C" stat -c '%U:%G' /data
 ha apps restart homeweave
 sleep 20
-docker exec addon_homeweave stat -c '%U:%G' /data
+docker exec "$C" stat -c '%U:%G' /data
 ha apps info homeweave | grep -E 'version|state'
 ```
 
@@ -122,10 +126,10 @@ ha apps info homeweave | grep -E 'version|state'
 `docker exec` 默认以镜像 `USER`（root）执行，所以 `docker exec id -u` **恒为 0，不能用来判断降权**；必须读 PID 1。
 
 ```bash
-docker exec addon_homeweave sh -c 'grep -E "^Uid" /proc/1/status'
-docker exec addon_homeweave stat -c '%U:%G %a' /data
-docker exec -u node addon_homeweave sh -c 'touch /data/.probe && rm /data/.probe && echo writable'
-docker exec addon_homeweave ls -l /data
+docker exec "$C" sh -c 'grep -E "^Uid" /proc/1/status'
+docker exec "$C" stat -c '%U:%G %a' /data
+docker exec -u node "$C" sh -c 'touch /data/.probe && rm /data/.probe && echo writable'
+docker exec "$C" ls -l /data
 ha apps logs homeweave | tail -n 40
 ```
 
@@ -148,8 +152,8 @@ ha apps logs homeweave | tail -n 40
 ### 阶段 B：健康端点（V3）
 
 ```bash
-docker exec addon_homeweave node -e "fetch('http://127.0.0.1:8099/health/ready').then(r=>r.text().then(t=>console.log(r.status,t)))"
-IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' addon_homeweave)
+docker exec "$C" node -e "fetch('http://127.0.0.1:8099/health/ready').then(r=>r.text().then(t=>console.log(r.status,t)))"
+IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$C")
 curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8099/health/live"
 ```
 
@@ -168,12 +172,14 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8099/health/live"
 
 #### V4 启动 fail-fast 三例
 
-用 `docker exec` 另起进程，不影响运行中的实例，也不改 `/data`：
+用 `docker exec` 另起进程，不影响运行中的实例，也不改 `/data`。
+
+**必须带 `-u node`**：`docker exec` 默认以镜像 `USER`（root）执行，而 root 的 `CAP_DAC_OVERRIDE` 会让 `access(W_OK)` 在 `/proc` 上放行，第二例会变成 `write_failed` 而不是 `dir_readonly`。真实服务器是 uid 1000，只有 `-u node` 才是同一口径（真机已踩到）。
 
 ```bash
-docker exec -e DATABASE_URL=file:/nonexistent/x.db addon_homeweave node dist/main.js; echo "exit=$?"
-docker exec -e DATABASE_URL=file:/proc/hw.db addon_homeweave node dist/main.js; echo "exit=$?"
-docker exec -e PORT=abc addon_homeweave node dist/main.js; echo "exit=$?"
+docker exec -u node -e DATABASE_URL=file:/nonexistent/x.db "$C" node dist/main.js; echo "exit=$?"
+docker exec -u node -e DATABASE_URL=file:/proc/hw.db "$C" node dist/main.js; echo "exit=$?"
+docker exec -u node -e PORT=abc "$C" node dist/main.js; echo "exit=$?"
 ```
 
 | 用例 | 预期 `reason` | 预期退出码 |
@@ -198,20 +204,30 @@ docker exec -e PORT=abc addon_homeweave node dist/main.js; echo "exit=$?"
 CLI 备用（语法随版本变化，报错就用 UI）：`ha apps options homeweave --log_level=debug` 后 `ha apps restart homeweave`。
 
 ```bash
-docker exec addon_homeweave node -e "fetch('http://127.0.0.1:8099/health/live',{headers:{authorization:'Bearer LEAK-CANARY-123',cookie:'session=LEAK-CANARY-123'}}).then(r=>console.log('status',r.status))"
-docker logs --tail 300 addon_homeweave 2>&1 | grep -c 'LEAK-CANARY-123'
+docker exec "$C" node -e "fetch('http://127.0.0.1:8099/health/live',{headers:{authorization:'Bearer LEAK-CANARY-123',cookie:'session=LEAK-CANARY-123'}}).then(r=>console.log('status',r.status))"
+docker logs --tail 300 "$C" 2>&1 | grep -c 'LEAK-CANARY-123'
 ```
 
 预期：请求 `status 200`；`grep -c` 输出 `0`。
 
 > `grep -c` 无匹配时退出码为 1，属正常；**看输出数字，不看退出码**。
 
+**先确认 debug 真的生效，否则结论是假阴性。** 0.1.2 的真机验收就栽在这里：`grep -c` 得到 `0`，但 `log_level` 根本没被读到，`0` 只是因为日志还在 info 级别。重启后先看启动记录：
+
+```bash
+ha apps logs homeweave | grep '\"event\":\"startup_ok\"' | tail -n 1
+```
+
+必须是 `"logLevel":"debug"` 且 `"logLevelSource":"options"`。若为 `"info"` + `"fallback"`，说明 `/data/options.json` 没被读到（0.1.2 的 F-1），脱敏这一步的结论作废，标记为"未验证"而不是"通过"。
+
+改选项后 Supervisor **不会**自动重启 App，配置只在下次启动时被读取，所以"改完不生效"先确认重启过。
+
 口径：Phase 3 的访问日志本就不记录请求头，`0` 证明的是"日志链路里不存在明文凭证"，不等于"掩码函数在真机上执行过"（后者由单元测试覆盖）。测完把 `log_level` 改回 `info` 并重启。
 
 #### V8 options.json 链路
 
 ```bash
-docker exec addon_homeweave cat /data/options.json
+docker exec "$C" cat /data/options.json
 ```
 
 预期 `{"log_level":"info","ha_url":""}`（键顺序可能不同）。再用 UI 把 `ha_url` 填任意非空值（如 `http://example.local:8123`）→ 重启 → 复看同一命令：`ha_url` 值随之变化即链路通。测完清空 `ha_url` 并重启。
@@ -239,7 +255,7 @@ docker exec addon_homeweave cat /data/options.json
 
 ```bash
 date +%T
-docker pause addon_homeweave
+docker pause "$C"
 sleep 90
 ha supervisor logs --lines 200 | grep -i homeweave
 date +%T
@@ -250,7 +266,7 @@ date +%T
 清理（`pause` 中的容器无法被正常 stop，Supervisor 重启可能失败）：
 
 ```bash
-docker unpause addon_homeweave 2>/dev/null
+docker unpause "$C" 2>/dev/null
 ha apps restart homeweave
 ```
 
@@ -258,17 +274,27 @@ ha apps restart homeweave
 
 #### V5 优雅关闭
 
+**退出码和关闭日志都必须在 stop 之前开始监听**：Supervisor 在 stop 完成后会**移除容器**，之后 `docker inspect` 取不到 `.State.ExitCode`、`docker logs` 也一并没了（0.1.2 真机已确认 inspect 返回空）。所以两样都要先挂上监听：
+
 ```bash
+nohup docker logs -f "$C" > /tmp/stop.log 2>&1 &
+nohup docker events --filter 'event=die' \
+  --format '{{.Actor.Attributes.name}} exit={{.Actor.Attributes.exitCode}}' > /tmp/die.log 2>&1 &
+sleep 1
 date +%T
 time ha apps stop homeweave
-docker inspect -f 'exit={{.State.ExitCode}} oom={{.State.OOMKilled}}' addon_homeweave
-docker logs --tail 60 addon_homeweave 2>&1 | tail -n 60
+sleep 3
+
+cat /tmp/die.log
+grep -E 'shutdown|startup' /tmp/stop.log | tail -n 20
 ```
+
+`docker logs -f` 会在容器被移除时自行结束，`/tmp/stop.log` 里保留的是完整关闭过程。这是唯一能在容器消失后复盘 shutdown 顺序的办法。
 
 四条全中才算通过：
 
-1. `exit=0` —— 不是 143（`useProcessExit` 未生效），也不是 137（超出 10 s 宽限被 SIGKILL）；
-2. 日志里 `shutdown: stop accepting new requests` **早于** `shutdown: prisma disconnected`；
+1. `/tmp/die.log` 里 `exit=0` —— 不是 143（`useProcessExit` 未生效），也不是 137（超出 10 s 宽限被 SIGKILL）；
+2. `/tmp/stop.log` 里 `shutdown: stop accepting new requests` **早于** `shutdown: prisma disconnected`；
 3. 无 `shutdown_forced` / `shutdown: budget exceeded`；
 4. 耗时 < 10 s（CI 为 96 ms；真机数百毫秒正常）。
 
@@ -287,6 +313,7 @@ ha apps start homeweave
 | 输出 | 正确判读 |
 |---|---|
 | `/health/ready` 里 `migrations: {status: unknown, reason: table_missing}` | 正常。镜像不含 prisma CLI、不跑迁移，表由 Phase 4 建；按约定不参与状态码，整体仍 200 |
+| `/data/homeweave.db` 是 0 字节，`database: ok` 仍成立 | 正常，但这条 `ok` 很弱：SQLite 把 0 字节文件当空库，健康检查用常量查询、不触碰任何表。**不要**据此认为数据库链路已验证，Phase 4 建表后必须重验 |
 | 启动日志 `startup: migrations unknown - /health/ready will not report migration state` | 同上，是刻意打的提醒，不是错误 |
 | `ports` 未发布、只能用 ingress 访问 | 正常，`config.yaml` 的既定设计，Phase 5 才有自家认证 |
 
@@ -316,6 +343,6 @@ ha apps start homeweave
 ## 7. 禁止事项
 
 - 为让 V2 通过而删 `USER node`、去掉 entrypoint 或手工 `chown` 掩盖问题——那不是验证，是把缺陷藏起来。
-- 覆盖已发布的镜像或 git tag。`0.1.2` 之后任何修复只能发 `0.1.3`。
+- 覆盖已发布的镜像或 git tag。`0.1.3` 之后任何修复只能发 `0.1.4`。
 - 编辑 `/data` 里的数据库文件、删除 `/data` 目录。
 - 用 `docker run` 直接跑镜像替代 Supervisor 安装来"证明"能装——真机要验的正是 Supervisor 的挂载、信号投递、探活三条路径。

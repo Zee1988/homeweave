@@ -117,7 +117,13 @@ created: "2026-10-28"
 
 镜像 `ghcr.io/zee1988/homeweave-ha-app:0.1.2`（`amd64` + `arm64`）与 git tag `0.1.2` 已发布。发布前的 `verify-image` 全绿：匿名拉取成功、内容断言 10/10（第 10 项读 `PID 1` 的 `/proc/1/status`，确认 uid 1000 且 `/data` 可写）、fail-fast ×3、8 s 停机预算、manifest 双架构断言均通过。两次中途 run 的原因与修法见 `docs/21_HOME_ASSISTANT_APP_DEPLOYMENT.md` §11.2。
 
-真机侧仍是**未执行**。装好 0.1.2 后只需跑 V2（预期无需手工 `chown` 即 `startup_ok`）与 V4–V9；V2 的判据是启动日志里的 `startup_ok` 加上以 `node` 身份在 `/data` 建删探针文件成功。
+真机侧已执行（2026-10-29，HA Green）：步骤 1–7 通过，第 8 步被缺陷 **F-1** 阻断，9–11 按"失败即停"未执行。
+
+F-1 是 `options.json` 属主未被回收：0.1.2 的 entrypoint 只在 `/data` 目录本身非 uid 1000 时才递归 `chown`，而 Supervisor 在运行期改选项会以 `root:root 0600` 重写该文件，导致此后所有 option 静默失效（`logLevelSource: "fallback"`，无任何告警）。canary 计数 `0` 因此是假阴性，脱敏结论记为**未验证**而非通过。根因、修法与 `0.1.3` 的四处改动见 `docs/21` §11.3.1。
+
+真机同时暴露两处**手册口径**问题（非产品缺陷，已在 `docs/23` 修正）：容器名实际是 `app_<hash>_homeweave` 而非 `addon_homeweave`；`ha apps stop` 会移除容器，退出码与关闭日志必须在 stop 前用 `docker events`、`docker logs -f` 先监听。
+
+复验 `0.1.3` 时按 `docs/23_ON_DEVICE_TEST_RUNBOOK.md` 执行，重点看第 8 步是否出现 `logLevelSource: "options"`。
 
 ### V1 添加仓库、安装与版本
 

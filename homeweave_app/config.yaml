@@ -1,7 +1,7 @@
 # Reference: https://contributors.home-assistant.io/apps/reference/configuration/
 name: HomeWeave
 slug: homeweave
-version: "0.1.2"
+version: "0.1.3"
 description: AI Home Operating System for Home Assistant
 url: "https://github.com/Zee1988/homeweave/tree/master/homeweave_app"
 arch:
