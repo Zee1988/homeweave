@@ -91,6 +91,8 @@ created: "2026-10-28"
 > 前置：HAOS ≥ 2026.10；SSH App 已安装且 **Protection mode 关闭**——否则 `docker` 命令全部不可用，本清单一半步骤跑不了；容器名固定为 `addon_homeweave`。若 CLI 不认 `ha apps`，全文换 `ha addons`。
 >
 > 定位：CI（run 40654684908）已在 Linux 容器内验过镜像内容、fail-fast 与排空。真机要验的是 Supervisor 的**挂载、信号投递、探活**三条路径，不是把 CI 重跑一遍。
+>
+> 交给他人/另一个 AI 执行时，用 `docs/23_ON_DEVICE_TEST_RUNBOOK.md`——自包含版本，含执行顺序、逐条命令、预期输出与回报模板；本文件保留为验收契约与结论归档。
 
 ### 0.1.1 实测（2026-10-29 · HA Green · aarch64 · Supervisor 2026.10.4 · Core 2026.10.2）
 

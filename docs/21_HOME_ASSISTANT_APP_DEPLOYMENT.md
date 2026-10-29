@@ -224,7 +224,7 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 
 镜像内容自 `40793337869` 的 `publish` 起未变：`3337449` 只改了 `scripts/ci/assert-image.sh`，`e8c4f16` 只改了工作流与校验器，二者都不进镜像。因此 `resume_from_verify=true` 重验的就是本应发布的那个镜像，而不是"另一个构建"。
 
-`0.1.2` 在真机上的复验（V2 与 V4–V9）仍是**未执行**项，见 `.planning/phases/03-runtime/03-VALIDATION.md`。
+`0.1.2` 在真机上的复验（V2 与 V4–V9）仍是**未执行**项，见 `.planning/phases/03-runtime/03-VALIDATION.md`。可交给执行方的自包含步骤见 `docs/23_ON_DEVICE_TEST_RUNBOOK.md`。
 
 ## 12. 官方参考
 
