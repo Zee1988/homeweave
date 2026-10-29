@@ -279,6 +279,27 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 
 要注意 `database: ok` 在空库上是**弱证据**：SQLite 打开 0 字节文件视为空库，`/health/ready` 的 database 检查用的是常量查询，不触碰任何表，因此照样返回 `ok`。Phase 4 建表后必须重验一次，不能把这次的 `ok` 当作"数据库链路已验证"。
 
+### 11.4 `0.1.3` 发布记录（2026-10-29）
+
+| 项 | 结果 |
+|---|---|
+| run | `40813153148`（`guard` → `static` → `publish` → `verify-image` → `tag` 全绿） |
+| 镜像 | `ghcr.io/zee1988/homeweave-ha-app:0.1.3`，`amd64` + `arm64`，匿名拉取成功 |
+| 内容断言 | ✅ 11/11（新增第 11 项） |
+| git tag | `0.1.3`，已同步到 Gitee |
+| 契约护栏 | `scripts/validate-app-metadata.mjs` 的 `CONTRACT.version` 同步改为 `0.1.3`（该值必须与已发布版本完全一致） |
+
+第 11 项在真实镜像上的输出：
+
+```
+✓ 11/11 a root:root 0600 options.json is reclaimed on restart (log_level=debug took effect, logLevelSource=options)
+✓ all 11 image assertions passed
+```
+
+这条断言是 0.1.2 那次真机失败的机械复现：向运行中的容器写入 `root:root 0600` 的 `options.json`，`docker restart` 后要求 `-u node` 能读到、且启动记录为 `logLevelSource: "options"`。旧镜像在这条上必然失败，新镜像必须通过。
+
+`0.1.3` 相对 `0.1.2` 不改任何 API、schema 或 config：改动只有 entrypoint 的 chown 判定、日志级别的错误归类（新增 `source: "unreadable"`）、一条 warn，以及断言脚本。
+
 ## 12. 官方参考
 
 - Apps 开发总览：https://developers.home-assistant.io/docs/apps

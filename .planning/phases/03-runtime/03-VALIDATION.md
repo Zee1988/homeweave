@@ -123,7 +123,7 @@ F-1 是 `options.json` 属主未被回收：0.1.2 的 entrypoint 只在 `/data` 
 
 真机同时暴露两处**手册口径**问题（非产品缺陷，已在 `docs/23` 修正）：容器名实际是 `app_<hash>_homeweave` 而非 `addon_homeweave`；`ha apps stop` 会移除容器，退出码与关闭日志必须在 stop 前用 `docker events`、`docker logs -f` 先监听。
 
-复验 `0.1.3` 时按 `docs/23_ON_DEVICE_TEST_RUNBOOK.md` 执行，重点看第 8 步是否出现 `logLevelSource: "options"`。
+`0.1.3` 已发布（run `40813153148`，`verify-image` 11/11，新增第 11 项在真实镜像上复现并验证了 F-1）。复验时按 `docs/23_ON_DEVICE_TEST_RUNBOOK.md` 执行，**重点看第 8 步的 `logLevelSource` 是否为 `"options"`**——若不是，脱敏结论仍然只能算未验证。
 
 ### V1 添加仓库、安装与版本
 

@@ -7,7 +7,7 @@ status: executing
 stopped_at: Completed 03-05-PLAN.md
 last_updated: "2026-10-29T00:00:00.000Z"
 last_activity: 2026-10-29
-last_activity_desc: 0.1.2 真机验收 1–7 通过、第 8 步被 F-1（运行期改写的 options.json 属主未被回收，option 静默失效）阻断；0.1.3 修 entrypoint 判定 + log-level 区分 unreadable + CI 第 11 项断言，待发布后复验
+last_activity_desc: 0.1.2 真机验收 1–7 通过、第 8 步被 F-1（运行期改写的 options.json 属主未被回收，option 静默失效）阻断；0.1.3 已修复并发布（run 40813153148，verify-image 11/11），真机复验第 8 步待执行
 state_head: 19ec03d5badbfe45b284b5af3664f920263e330c
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 Phase: 03 (运行时骨架) — EXECUTING
 Plan: 5 of 5
 Status: Ready to verify
-Last activity: 2026-10-29 — 0.1.2 真机验收：1–7 通过，第 8 步被 F-1 阻断（`/data/options.json` 被 Supervisor 重写为 root:root 0600 后不可读，所有 option 静默失效，脱敏结论只能算未验证）；0.1.3 已修，待发布复验
+Last activity: 2026-10-29 — 0.1.2 真机验收：1–7 通过，第 8 步被 F-1 阻断（`/data/options.json` 被 Supervisor 重写为 root:root 0600 后不可读，所有 option 静默失效，脱敏结论只能算未验证）；0.1.3 已修复并发布（`verify-image` 11/11，第 11 项在真实镜像上复现该缺陷），待真机复验第 8 步
 
 Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 15/15 plans executed)
 
