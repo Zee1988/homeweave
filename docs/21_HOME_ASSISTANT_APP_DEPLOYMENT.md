@@ -316,7 +316,7 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 | 7 日志脱敏 | ✅ | `logLevel:"debug"` + `logLevelSource:"options"`，canary 计数 `0`，且存在 `level:20` 请求日志——**debug 真生效，不是假阴性** |
 | 8 options 链路 | ✅ | `ha_url` 改后文件跟随，属主仍 `node:node 600`，`logLevelSource` 未回落 |
 | 9 ingress | ⏳ | 无会话直连返回 401（已进 HA 认证层，非 502）、容器内 `/` 返 404 `Cannot GET /`；仅剩"点侧边栏面板"一步人工确认 |
-| 10 watchdog | ⬜ | `pause` 后 4.5 分钟仍未触发，Supervisor 无探活失败/重启日志——**平台侧未观测到，不判 App 缺陷**，复测方式见 `docs/23` §4 V6 |
+| 10 watchdog | ⬜ | `docker kill -s STOP` 冻结 PID1 后 20 分钟、40 次采样零变化（`created` 不变、`status=running`），Supervisor 无探活日志；区分实验：HTTP `code=000` / 5.0 s 超时，TCP 握手 0.7 ms 成功 → **该版本 watchdog 判 TCP connect，永久判健康** |
 | 11 优雅关闭 | ✅ | 耗时 1 s、`die exitCode=0`、`stop accepting`(56.558) 早于 `prisma disconnected`(56.581)、无 `forced`/`budget` |
 | 12 环境 | ✅ | OS 18.3.1 / Supervisor 2026.10.4 / Core 2026.10.2 |
 
@@ -324,7 +324,9 @@ Gitee 仓库是**镜像**，不是第二主源：代码与 tag 从 GitHub 单向
 
 第 9 步的 401 是**正确**结果：ingress 已把请求送到 HA 的认证层，浏览器带会话点面板才会落到容器的 404。
 
-第 10 步给后续的结论只有一条：**Supervisor 的探活周期大于 4.5 分钟，且未在 `pause` 下触发重启**。这既不能证明 watchdog 失效，也不能证明有效；App 侧已用第 5 步证明 `/health/live` 正常，故不阻塞 Phase 3 验收。复测须把观察窗口拉到 20 分钟并优先用 `kill -STOP 1`。
+第 10 步已结案，结论不是"周期太长"而是**判定方式不同**：冻结 PID1 后 HTTP 探活 5.0 秒超时（`curl` exit 28）、TCP 三次握手 0.7 ms 成功；而 20 分钟窗口内 `created` 与 `status` 零变化、Supervisor 无任何探活日志。合起来只有一种解释——**该版本的 App watchdog 判的是 TCP connect，只要端口还在监听就永远判健康**，`watchdog` URL 的路径部分不参与判定。
+
+对产品的含义要记住：**Supervisor 的 watchdog 发现不了"进程活着但不响应"的挂死**。Phase 4+ 若需要这类保障，只能由 App 内自检兜底（后台定时打自己的 `/health/ready`，连续失败后 `process.exit(1)`），不能指望平台。本项记 ⬜（平台侧未覆盖），不阻塞 Phase 3 验收。
 
 ## 12. 官方参考
 

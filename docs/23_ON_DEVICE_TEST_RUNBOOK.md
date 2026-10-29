@@ -250,28 +250,44 @@ docker exec "$C" cat /data/options.json
 
 ### 阶段 E：watchdog 与优雅关闭（会停容器，放最后）
 
-#### V6 watchdog
+#### V6 watchdog（平台观测项，非必做）
 
-目的：观测 Supervisor 的 `watchdog` 探活是否真的会重启一个失去响应的 App，并记录实测间隔。`config.yaml` 里配的是 `http://[HOST]:[PORT:8099]/health/live`。
+目的：观测 Supervisor 的 `watchdog` 探活是否真会重启一个失去响应的 App。`config.yaml` 配的是 `http://[HOST]:[PORT:8099]/health/live`。
 
-**先纠正预期（0.1.3 真机教训）**：Supervisor 的探活周期官方没有文档化，实测远大于 90 秒——0.1.3 真机里 `docker pause` 后 **4.5 分钟**容器仍在 `paused`、Supervisor 日志无任何重启或探活失败行。所以观察窗口要给到 **20 分钟**，而且：
+**0.1.3 已在真机结案，结论是"该版本永久判健康、不会触发"**，只在升级 Supervisor 后才值得重跑：
 
-> **未触发不等于 App 缺陷。** watchdog 由 Supervisor 执行，App 侧唯一能做的只是让 `/health/live` 如实反映存活（第 5 步已验证）。20 分钟无动静只能记 **⬜ 未观测到（平台侧）**，不得记 ❌。
+| 事实 | 证据 |
+|---|---|
+| 20 分钟、40 次采样全部一致 | `created=2026-10-29T05:22:24…` 40/40 不变、`status=running` 40/40、`state: started` 40/40 |
+| 同期 Supervisor 日志 `watchdog` / `not responding` / `homeweave` → 空 | 无探活失败、无重启意图 |
+| 冻结状态下 HTTP 探活必失败 | `curl` 输出 `code=000 t=5.002289`（exit 28 超时） |
+| 冻结状态下 TCP 握手仍成功 | `t=0.000717` |
 
-注入挂死，两种任选：
+两条通道一对比就解释了全部现象：**该版本的 App watchdog 判的是 TCP connect，不是 HTTP**——`pause` / `STOP` 下内核照样完成三次握手，于是永久判健康。"未触发"既不是 App 缺陷，也不是实验手法问题。
 
-| 方式 | 命令 | 特点 |
-|---|---|---|
-| 冻结整个容器 | `docker pause "$C"` | 最接近真实挂死，但 `docker exec` 同时失效，只能在宿主侧观察 |
-| 只停主进程 | `docker exec "$C" kill -STOP 1` | 主进程不再响应 HTTP，`exec` 仍可用；容器未被 pause，Supervisor 真去重启时能成功 |
+**对产品的含义（必须记住）**：Supervisor watchdog 发现不了"进程活着但不响应"的挂死，`watchdog` URL 的路径部分不参与判定，`/health/live` 写得再准也没用。Phase 4+ 若要真实保障，只能靠 App 内自检（后台定时打自己的 `/health/ready`，连续失败后 `process.exit(1)`），不能指望平台。
 
-**优先用 `kill -STOP 1`**：若 Supervisor 的探活是纯 TCP 连接判定，`pause` 下内核仍会完成握手，可能永远不触发；而探活若是 HTTP 判定，两种方式都会超时。用 `kill -STOP 1` 能同时覆盖"容器可被正常重启"这一条，结论更干净。
+注入（**必须用 daemon 侧**）：容器内没有 `kill` 二进制，`docker exec "$C" kill -STOP 1` 报 `executable file not found`；`sh` 内建 `kill -STOP 1` 返回 0 但 PID 1 仍是 `S`，信号没落地。
+
+```bash
+docker kill -s STOP "$C"
+docker exec "$C" sh -c 'grep -E "^State" /proc/1/status'    # 期望 State: T (stopped)
+```
+
+区分实验（可选；冻结状态下同时测两条通道）：
+
+```bash
+IP=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$C")
+curl -s -o /dev/null -w 'http code=%{http_code} t=%{time_total}\n' --max-time 5 "http://$IP:8099/health/live"
+time nc -w 3 "$IP" 8099 </dev/null      # busybox nc，连上即返回；无 nc 可跳过这项
+```
+
+预期：`code=000` + 约 5 s 超时；`nc` 几毫秒返回。这与上面的实测一致。
 
 观察（每 30 秒采样，最多 20 分钟）：
 
 ```bash
 date +%T
-docker exec "$C" kill -STOP 1
 for i in $(seq 1 40); do
   sleep 30
   printf '%s ' "$(date +%T)"
@@ -281,21 +297,19 @@ done
 ha supervisor logs --lines 400 | grep -i -E 'watchdog|homeweave|not responding'
 ```
 
-判据（任一即 ✅，记录从注入到触发的秒数）：
+判据（任一即 ✅，记录注入到触发的秒数）：
 
-1. 循环里 `created=` 变化（容器被重建）或 `status=` 从 `running` 变成其他，且 Supervisor 日志出现探活失败/重启行；
-2. 20 分钟到点仍无变化 → **⬜ 未观测到（平台侧，不判缺陷）**，附完整采样输出与 `ha supervisor logs` 相关段。
+1. 循环里 `created=` 或 `status=` 变化，且日志出现探活失败/重启行；
+2. 20 分钟无变化 → **⬜ 未观测到（平台侧，不判缺陷）**，附采样输出与日志段。
 
 清理：
 
 ```bash
-docker exec "$C" kill -CONT 1 2>/dev/null
-docker unpause "$C" 2>/dev/null
+docker kill -s CONT "$C" 2>/dev/null
 ha apps restart homeweave
 ```
 
-> 若容器已被重启，`kill -CONT` / `unpause` 报错属正常，直接 `ha apps restart`。
-> 不要用 `kill -9 1` 代替：那会让容器退出，触发的是 Docker 的 restart policy 而不是 watchdog，会把结论搞错。
+> 不要用 `kill -9` / `docker kill -s KILL`：那让容器退出，触发的是 Docker restart policy 而非 watchdog，结论会错。
 
 #### V5 优雅关闭
 
@@ -351,6 +365,7 @@ ha apps start homeweave
 | `ha apps options` 命令不存在 | 该 Supervisor 版本 CLI 未提供 | 走 REST：`POST /addons/<slug>/options`，body 必须是 `{"options":{"log_level":"debug"}}`，裸对象返回 400 |
 | `docker cp` 到 Core 容器 `/tmp` 返回 0，文件却不可见 | Core 容器的 `/tmp` 与宿主不是同一层 | 改用 `docker exec -e OPT=...` 直接传参 |
 | `/tmp` 残留 `hw_*.log`、`stop.log`、`die.log` | 第 11 步的监听文件 | `rm -f /tmp/hw_*.log /tmp/stop.log /tmp/die.log`；HAOS 上 `rm` 可能触发确认弹窗，一次授权即可 |
+| 容器内 `kill -STOP 1` 看起来成功却没效果 | 镜像里没有 `kill` 二进制（报 not found）；`sh` 内建 `kill` 返回 0 但信号不落地，PID1 仍是 `S` | 一律走 daemon 侧 `docker kill -s STOP <name>`，用 `docker exec "$C" sh -c 'grep ^State /proc/1/status'` 的 `State: T` 确认；恢复用 `docker kill -s CONT` |
 
 ---
 

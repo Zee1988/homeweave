@@ -123,7 +123,9 @@ F-1 是 `options.json` 属主未被回收：0.1.2 的 entrypoint 只在 `/data` 
 
 真机同时暴露两处**手册口径**问题（非产品缺陷，已在 `docs/23` 修正）：容器名实际是 `app_<hash>_homeweave` 而非 `addon_homeweave`；`ha apps stop` 会移除容器，退出码与关闭日志必须在 stop 前用 `docker events`、`docker logs -f` 先监听。
 
-`0.1.3` 已在真机复验（2026-10-29，HA Green）：12 步执行完毕，**10 项通过、第 9 步仅剩人工点侧边栏面板、第 10 步 watchdog 平台侧未观测到**（`pause` 后 4.5 分钟未触发，非 App 缺陷；复测窗口须 20 分钟，见 `docs/23`）。逐项数值见 `docs/21` §11.4.1。
+`0.1.3` 已在真机复验（2026-10-29，HA Green）：12 步执行完毕，**10 项通过、第 9 步仅剩人工点侧边栏面板、第 10 步 watchdog 记为 ⬜（平台侧未覆盖）**。逐项数值见 `docs/21` §11.4.1。
+
+第 10 步是**区分实验**而非单纯等待：冻结 PID1（`docker kill -s STOP`）后 HTTP 探活 5.0 s 超时、TCP 握手 0.7 ms 成功，20 分钟 40 次采样 `created`/`status` 零变化、Supervisor 无探活日志。结论：该版本 App watchdog 判 TCP connect，端口在监听即永久判健康。**Supervisor 无法发现"进程活着但不响应"的挂死**，Phase 4+ 需要时由 App 内自检兜底。
 
 **F-1 已双向确认关闭**：第 3 步把 `/data` 人为打回 `root:root` 后重启自动纠正；第 8 步 Supervisor 经 REST 重写 `options.json` 后仍为 `node:node 600`、`logLevelSource` 保持 `options`。
 

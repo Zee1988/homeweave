@@ -7,7 +7,7 @@ status: executing
 stopped_at: Completed 03-05-PLAN.md
 last_updated: "2026-10-29T00:00:00.000Z"
 last_activity: 2026-10-29
-last_activity_desc: 0.1.3 真机验收 12 步执行完毕（10 通过 / 第 9 步待人工点面板 / 第 10 步 watchdog 平台侧未观测到）；F-1 双向确认关闭，脱敏由"未验证"转已验证
+last_activity_desc: 0.1.3 真机验收 12 步执行完毕（10 通过 / 第 9 步待人工点面板 / 第 10 步 watchdog 结案为平台侧 TCP 探活，不覆盖挂死）；F-1 双向确认关闭，脱敏由"未验证"转已验证
 state_head: 19ec03d5badbfe45b284b5af3664f920263e330c
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 Phase: 03 (运行时骨架) — EXECUTING
 Plan: 5 of 5
 Status: Ready to verify
-Last activity: 2026-10-29 — 0.1.3 真机验收 12 步执行完毕：10 项通过（含 F-1 双向确认关闭、脱敏由"未验证"转已验证），第 9 步仅剩人工点侧边栏面板，第 10 步 watchdog 在 `pause` 后 4.5 分钟未触发（平台侧未观测到，非 App 缺陷，复测窗口须 20 分钟并用 `kill -STOP 1`）
+Last activity: 2026-10-29 — 0.1.3 真机验收 12 步执行完毕：10 项通过（含 F-1 双向确认关闭、脱敏由"未验证"转已验证），第 9 步仅剩人工点侧边栏面板，第 10 步 watchdog 已结案——冻结 PID1 后 HTTP 探活 5.0 s 超时、TCP 握手 0.7 ms 成功，20 分钟 40 次采样零变化，判定该版本 watchdog 走 TCP connect，**平台不覆盖"进程活着但不响应"**，Phase 4+ 需要时由 App 内自检兜底
 
 Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 15/15 plans executed)
 
