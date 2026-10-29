@@ -310,6 +310,15 @@ jobs:
     needs:
       - guard
       - verify-image
+    # The condition is written out instead of inherited. GitHub evaluates an
+    # implicit success() over the whole dependency closure, and a resume run
+    # skips `publish` on purpose -- so with no `if:` the tag job was SILENTLY
+    # SKIPPED while the run still reported success (run 40794597502,
+    # 2026-10-29: verify-image green, no `0.1.2` tag on origin). Naming the two
+    # results keeps the guarantee -- a failed or skipped verify-image still
+    # cannot tag -- and turns "nothing happened" into a visible red instead of
+    # a green release that published nothing.
+    if: ${{ always() && needs.guard.result == 'success' && needs.verify-image.result == 'success' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:

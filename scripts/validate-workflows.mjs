@@ -821,6 +821,49 @@ export function checkJobsHaveCheckout(doc) {
 }
 
 /**
+ * F14 -- the tag job's condition is explicit.
+ *
+ * GitHub evaluates a job's implicit condition over its whole dependency
+ * closure, not just its direct `needs`, and a skipped job counts as not
+ * successful. A resume run skips `publish` by design, so release run
+ * 40794597502 (2026-10-29) finished `verify-image` green and then SKIPPED
+ * `tag` -- a green release that created no git tag at all. That is the one
+ * failure mode this workflow exists to make impossible, so the condition is
+ * named explicitly and asserted here: `always()` plus both results, which still
+ * cannot tag after a failed or skipped verification.
+ *
+ * @param {object|null} doc
+ * @returns {string[]}
+ */
+export function checkTagGate(doc) {
+  if (!isPlainObject(doc)) return [];
+
+  const tag = jobOf(doc, 'tag');
+  if (tag === null) {
+    return ['job "tag" is missing, so its explicit gate cannot be asserted'];
+  }
+
+  const tagIf = normalizeExpression(isPlainObject(tag) ? tag.if : undefined);
+  const problems = [];
+
+  for (const required of ['always()', "needs.guard.result=='success'", "needs.verify-image.result=='success'"]) {
+    if (!tagIf.includes(required)) {
+      problems.push(
+        `tag.if must contain "${required}": an implicit success() is evaluated over the dependency closure, so a resume run's skipped publish skips this job as well and the release goes green without a tag`,
+      );
+    }
+  }
+
+  if (tagIf.includes("!='skipped'")) {
+    problems.push(
+      "tag.if must not contain \"!= 'skipped'\": that form reads the resume case as a reason to run and every other case as a reason to skip",
+    );
+  }
+
+  return problems;
+}
+
+/**
  * Runs every rule that applies to the requested profile.
  *
  * @param {{profile?: 'ci'|'release'|'all', cwd?: string}} [options]
@@ -885,6 +928,7 @@ export function validateWorkflows({ profile = 'all', cwd = process.cwd() } = {})
     add('checkStepRuns[publish]', () => checkStepRuns(releaseDoc, 'publish', PUBLISH_SNIPPETS));
     add('checkStepRuns[verify-image]', () => checkStepRuns(releaseDoc, 'verify-image', VERIFY_IMAGE_SNIPPETS));
     add('checkStepRuns[tag]', () => checkStepRuns(releaseDoc, 'tag', TAG_SNIPPETS));
+    add('checkTagGate', () => checkTagGate(releaseDoc));
     add('checkJobsHaveCheckout[release]', () => checkJobsHaveCheckout(releaseDoc));
   }
 

@@ -23,6 +23,7 @@ import {
   checkPinnedActions,
   checkResumePath,
   checkStepRuns,
+  checkTagGate,
   main,
   parseArgs,
   validateWorkflows,
@@ -132,6 +133,7 @@ jobs:
       - run: node scripts/assert-manifest-platforms.mjs ghcr.io/zee1988/homeweave-ha-app:\${{ needs.guard.outputs.version }} "\${{ needs.guard.outputs.version }}"
   tag:
     needs: [guard, verify-image]
+    if: \${{ always() && needs.guard.result == 'success' && needs.verify-image.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -235,6 +237,7 @@ test('the release fixture passes every release rule', () => {
   isGreen(checkStepRuns(doc, 'publish', PUBLISH_SNIPPETS));
   isGreen(checkStepRuns(doc, 'verify-image', VERIFY_IMAGE_SNIPPETS));
   isGreen(checkStepRuns(doc, 'tag', TAG_SNIPPETS));
+  isGreen(checkTagGate(doc));
   isGreen(checkJobsHaveCheckout(doc));
 });
 
@@ -589,6 +592,32 @@ test('a verify-image job that drops the static dependency is rejected', () => {
   const doc = release();
   doc.jobs['verify-image'].needs = ['publish'];
   isRed(checkResumePath(doc), 'static');
+});
+
+// --- checkTagGate -- a skipped publish must not silently skip the tag ---------
+
+test('a tag job with no explicit condition is rejected', () => {
+  const doc = release();
+  delete doc.jobs.tag.if;
+  isRed(checkTagGate(doc), 'always()');
+});
+
+test('a tag condition that only requires the guard is rejected', () => {
+  const doc = release();
+  doc.jobs.tag.if = "${{ always() && needs.guard.result == 'success' }}";
+  isRed(checkTagGate(doc), 'verify-image.result');
+});
+
+test('a tag condition phrased as != skipped is rejected', () => {
+  const doc = release();
+  doc.jobs.tag.if = "${{ always() && needs.verify-image.result != 'skipped' && needs.guard.result == 'success' }}";
+  isRed(checkTagGate(doc), "!= 'skipped'");
+});
+
+test('a missing tag job is reported instead of silently passing', () => {
+  const doc = release();
+  delete doc.jobs.tag;
+  isRed(checkTagGate(doc), 'missing');
 });
 
 // --- checkJobsHaveCheckout ---------------------------------------------------
