@@ -2,7 +2,7 @@
 phase: "03"
 slug: "runtime"
 # status lifecycle: draft (seeded by plan-phase) → validated (set by validate-phase §6)
-status: draft
+status: validated
 nyquist_compliant: false
 wave_0_complete: true
 created: "2026-10-28"

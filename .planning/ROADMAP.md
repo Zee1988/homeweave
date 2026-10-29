@@ -26,7 +26,7 @@
 
 - [x] **Phase 1: App 元数据与仓库可识别性** - 让 Supervisor 认得出这个仓库与 HomeWeave 条目（静态自证通过；HAOS 实机未验证）
 - [x] **Phase 2: 镜像构建与发布链路** - 先镜像后版本号，多架构 manifest 公开可拉取，CI 作门禁（4/4 计划；镜像 `0.1.0` 已发布并经匿名拉取验证）
-- [ ] **Phase 3: 运行时骨架** - 进程能自证健康、日志脱敏、可优雅停止、配置错就 fail-fast
+- [x] **Phase 3: 运行时骨架** - 进程能自证健康、日志脱敏、可优雅停止、配置错就 fail-fast（真机 12 步：11 通过 / watchdog ⬜ 平台侧；`0.1.3`）
 - [ ] **Phase 4: 数据持久化与受控迁移** - `/data` 数据跨重启与升级保留，迁移失败不清库
 - [ ] **Phase 5: Ingress Web UI 与认证边界** - 侧边栏打开可用页面，绕过 Ingress 默认拒绝
 - [ ] **Phase 6: Home Assistant 连接与自检** - 自动发现凭据、自检连接、并把状态展示给用户
@@ -102,7 +102,7 @@
   3. 发送 `SIGTERM` 后进程在限定时间内自行退出：日志显示停止接收新请求并关闭连接与 Prisma，无被强制 SIGKILL 的记录。
   4. 走过一条带 `Authorization` 头与 token 的请求后，结构化日志中该字段已被脱敏为掩码，且每条日志都带可用于串联的 requestId。
   5. `DATABASE_URL` 指向不可写目录时进程 fail-fast 退出并给出明确错误，而不是带着半可用状态继续服务。
-**Plans**: 4/5 plans executed（3 waves）
+**Plans**: 5/5 executed（3 waves），真机验收已闭合
 
 - [x] 03-01-PLAN.md — tracer 切片：依赖、配置解析、Prisma adapter 与 `/health/live`（wave 1，RT-01）
 - [x] 03-02-PLAN.md — 探针语义收窄与 watchdog 生成链（wave 1，RT-01）
@@ -117,6 +117,13 @@
 - **RT-02 部分交付（D-06 显式偏差）**：migrations 只作为 `checks.migrations` 诊断字段，不参与 `/health/ready` 状态码；在补齐前不得宣称 SC-2 已完整覆盖。
 
 **验证类**: 容器模拟（探针、`docker stop`、日志脱敏断言）+ 静态（脱敏与校验单测）。
+
+**真机验收（2026-10-29，HAOS 18.3.1 / Supervisor 2026.10.4 / Core 2026.10.2，`0.1.3`）**：12 步全执行，**11 通过、1 项平台侧未覆盖**。
+
+- 通过：属主接管（`root:root` → `node:node`）、`Uid` ×4 全 1000、`/health/ready` 200、三例 fail-fast 均为 `78` + 单行 JSON、脱敏（`logLevelSource:"options"`、canary 0 且 debug 确已生效非假阴性）、options 链路（Supervisor REST 重写后仍 `node:node 600`）、ingress 面板落到 `404`、优雅关闭（1 s / `exit=0` / 关闭顺序正确）。
+- **F-1 双向确认关闭**：0.1.2 阻断第 8 步的缺陷不再复现（人为打回 `root:root` 后重启自动纠正；Supervisor 重写 options 后 `source` 不回落）。
+- ⬜ **watchdog**：冻结 PID1 后 HTTP 探活 5.0 s 超时、TCP 握手 0.7 ms 成功，20 分钟 40 次采样 `created`/`status` 零变化 → 该版本 App watchdog 判 TCP connect，**平台不覆盖"进程活着但不响应"**。Phase 4+ 需由 App 内自检（定时打自身 `/health/ready`，连续失败后 `process.exit(1)`）兜底。
+- 逐项数值见 `docs/21` §11.4.1；复测手法与实测环境坑见 `docs/23` §4 V6、§5.1。
 
 ### Phase 4: 数据持久化与受控迁移
 
