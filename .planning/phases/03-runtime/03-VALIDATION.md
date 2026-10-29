@@ -76,21 +76,40 @@ created: "2026-10-28"
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions | 实测结果（0.1.1） |
-|----------|-------------|------------|-------------------|-------------------|
-| `/data` 对容器内 `node` 用户可写 | RT-02/RT-05 | Supervisor 挂载权限无法本地复现（RESEARCH A2，**最大未知风险**） | 见 V2：启动日志出现 `startup_ok`，且以 `node` 用户在 `/data` 建删探针文件成功（命令见该节，勿留下探针文件） | ⬜ 待执行 |
-| HAOS 上 `ha apps stop` 实际耗时 | RT-03 | 无 HAOS 环境，Windows 宿主无 docker daemon | 见 V5：`time ha apps stop homeweave`，与 8 s 预算和 10 s SIGKILL 宽限对比 | ⬜ 待执行 |
-| 关闭期间无 SIGKILL | RT-03 | 需真实 `docker stop` | 见 V5：`docker inspect` 的 `ExitCode` 必须为 0（非 137/143），且日志无 `shutdown_forced` | ⬜ 待执行 |
-| `watchdog` 真的触发重启 | RT-01 | 未文档化的探测间隔/阈值 | 见 V6：`docker pause` 让 `/health/live` 失联，记录到 Supervisor 重启的间隔 | ⬜ 待执行 |
-| 日志里不出现明文凭证（真实 Supervisor 链路） | RT-04 | 无 HAOS 环境，且该断言需要真实容器日志 | 见 V7：金丝雀请求后 `docker logs \| grep -c` 为 0（掩码函数本身由 `sanitize.test.ts` 覆盖） | ⬜ 待执行 |
+| Behavior | Requirement | Why Manual | Test Instructions | 实测结果 |
+|----------|-------------|------------|-------------------|---------|
+| `/data` 对容器内 `node` 用户可写 | RT-02/RT-05 | Supervisor 挂载权限无法本地复现（RESEARCH A2） | 见 V2：启动日志出现 `startup_ok`，且以 `node` 用户在 `/data` 建删探针文件成功 | ❌ **0.1.1 命中 A2**：`/data` 为 `root:root`，启动即 `exit 78 / dir_readonly`。手工 `chown -R 1000:1000` 后启动成功；0.1.2 由 `docker/entrypoint.sh` 在启动时接管，待复验 |
+| HAOS 上 `ha apps stop` 实际耗时 | RT-03 | 无 HAOS 环境，Windows 宿主无 docker daemon | 见 V5：`time ha apps stop homeweave`，与 8 s 预算和 10 s SIGKILL 宽限对比 | ⬜ 未执行（HA Green 上尚未跑 V5） |
+| 关闭期间无 SIGKILL | RT-03 | 需真实 `docker stop` | 见 V5：`docker inspect` 的 `ExitCode` 必须为 0（非 137/143），且日志无 `shutdown_forced` | ⬜ 未执行 |
+| `watchdog` 真的触发重启 | RT-01 | 未文档化的探测间隔/阈值 | 见 V6：`docker pause` 让 `/health/live` 失联，记录到 Supervisor 重启的间隔 | ⬜ 未执行 |
+| 日志里不出现明文凭证（真实 Supervisor 链路） | RT-04 | 无 HAOS 环境，且该断言需要真实容器日志 | 见 V7：金丝雀请求后 `docker logs \| grep -c` 为 0（掩码函数本身由 `sanitize.test.ts` 覆盖） | ⬜ 未执行 |
 
 ---
 
-## 真机执行清单（0.1.1，待执行）
+## 真机执行清单（0.1.1 → 0.1.2）
 
 > 前置：HAOS ≥ 2026.10；SSH App 已安装且 **Protection mode 关闭**——否则 `docker` 命令全部不可用，本清单一半步骤跑不了；容器名固定为 `addon_homeweave`。若 CLI 不认 `ha apps`，全文换 `ha addons`。
 >
 > 定位：CI（run 40654684908）已在 Linux 容器内验过镜像内容、fail-fast 与排空。真机要验的是 Supervisor 的**挂载、信号投递、探活**三条路径，不是把 CI 重跑一遍。
+
+### 0.1.1 实测（2026-10-29 · HA Green · aarch64 · Supervisor 2026.10.4 · Core 2026.10.2）
+
+| 项 | 结果 |
+|---|---|
+| V1 安装 | ✅ `0.1.1` 已安装、`state: started`、`boot: auto`。GHCR 直连经 `d.fashgh.com` 加速器拉取 19 分钟 0 字节；改用 `ghcr.dockerproxy.net` 手工下载 13 个 blob、逐个 `sha256sum` 校验后组装 `docker load`，Supervisor 检测到本地镜像即跳过拉取。**属网络环境问题，不是镜像缺陷** |
+| V2 `/data` | ❌ **A2 命中**：`/data` 为 `root:root`，uid 1000 无法写入，启动即 `exit 78 / dir_readonly`。手工 `chown -R 1000:1000 /mnt/data/supervisor/apps/data/7cbb973f_homeweave` 后启动成功。0.1.2 用 `docker/entrypoint.sh` 在启动时接管该步骤 |
+| V3 `ready` | ✅ 200，`database ok`、`disk ok`（99 GiB 空闲）、`migrations: unknown (table_missing)`，与 D-06 一致——空库不参与状态码，建表归 Phase 4 |
+| V3 `live` | ✅ `{"status":"ok"}` 200 |
+| V4 fail-fast ×3 | ⬜ 未执行 |
+| V5 优雅关闭 | ⬜ 未执行（`ha apps stop` 耗时、`ExitCode`、日志顺序均无实测值） |
+| V6 watchdog | ⬜ 未执行 |
+| V7 脱敏 | ⬜ 未执行 |
+| V8 options.json | ⬜ 未执行 |
+| V9 ingress | ⬜ 只拿到 ingress URL，未记录点开后的响应（应为 404，不是 502） |
+
+**结论**：运行时契约在真实 Supervisor 下成立（能装、能起、`ready`/`live` 语义正确、数据目录可写后稳定运行），但 **0.1.1 在全新安装上必然 78 退出**，A2 由"最大未知风险"升级为"已确认缺陷"，修复归 0.1.2。V4–V9 尚未取证，不参与 sign-off。
+
+顺带确认两处**不是缺陷**、需要在复验时按预期判读：`migrations: unknown`（D-06：镜像不含 prisma CLI，表由 Phase 4 建）；`ports` 保持关闭、只走 ingress（config.yaml 的既定设计）。
 
 ### V1 添加仓库、安装与版本
 

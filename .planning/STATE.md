@@ -5,9 +5,9 @@ current_phase: 03
 current_phase_name: 运行时骨架
 status: executing
 stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-10-28T00:00:00.000Z"
-last_activity: 2026-10-28
-last_activity_desc: 0.1.1 镜像已发布（双架构，9 项镜像断言 + fail-fast + 优雅关闭全通过），等待真机验证
+last_updated: "2026-10-29T00:00:00.000Z"
+last_activity: 2026-10-29
+last_activity_desc: 0.1.1 已在 HA Green 实机安装运行，A2（/data 属主 root:root）确认命中；0.1.2 用 root entrypoint 降权修复，并开启 ingress 侧边栏面板
 state_head: 19ec03d5badbfe45b284b5af3664f920263e330c
 progress:
   total_phases: 7
@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-27)
 Phase: 03 (运行时骨架) — EXECUTING
 Plan: 5 of 5
 Status: Ready to verify
-Last activity: 2026-10-28 — 0.1.1 发布成功（run 40654684908：9 项镜像断言、exit 78、96 ms 排空、双架构 manifest）
+Last activity: 2026-10-29 — 0.1.1 真机验收：安装/启动/ready/live 通过，`/data` 属主导致 exit 78（A2 命中）；0.1.2 修复中
 
 Progress: [██░░░░░░░░] 28%  (2/7 phases verified, 15/15 plans executed)
 

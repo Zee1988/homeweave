@@ -149,7 +149,7 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 3. 添加 `https://github.com/<owner>/<repo>`。
 4. 找到 HomeWeave，安装并启动。
 5. 查看 Logs/Documentation，完成首次配置并验证 Home Assistant API 连接。
-6. 在 HA 内打开 Ingress Web UI；原生 App 需另行配置安全的 HomeWeave API 地址。
+6. 侧边栏会出现 HomeWeave 面板（0.1.2 起 `ingress_panel: true`），点开即 Ingress 入口；Phase 5 之前该面板返回 404，属预期。原生 App 需另行配置安全的 HomeWeave API 地址。
 
 发布流程：构建并发布镜像 → 更新 App 版本 → 用户在 Apps 中更新。每次数据库 schema 变化都需要向前迁移和备份策略；禁止启动时静默重置数据库。
 
@@ -166,7 +166,28 @@ Node.js 原生模块、Prisma engine 与 SQLite 相关依赖必须针对目标�
 - Supervisor token、HA token、模型 API key 不会出现在客户端、日志或 API 响应。
 - 原生 API 若启用，需通过独立认证、未授权访问拒绝、速率限制和安全传输测试。
 - 如果没有真实 Home Assistant OS 设备，必须把安装/升级验证标记为未验证，不能用普通 Docker Compose 测试替代。
-- 实机条目（**未在 HAOS 实机验证**，即 **HAOS 未验证**）：在 Home Assistant OS 的 Apps 商店添加自定义仓库 `https://github.com/Zee1988/homeweave` 后刷新，列表中出现 `HomeWeave` 条目，且该条目可以打开详情页。操作路径：设置 → 加载项商店 → 右上角仓库 → 添加上述 URL → 刷新。Phase 1 结束时该结果没有任何实机证据，因此只能记为待验证；不得据此认为仓库已被 Supervisor 识别。另注意「Open Web UI」按钮在 Phase 5 之前会指向空端口（S2 既定后果），实机核对时不应记为缺陷。
+- 实机条目（**已验证**，2026-10-29 / HA Green / `aarch64` / Supervisor 2026.10.4）：在 Apps 商店添加自定义仓库 `https://github.com/Zee1988/homeweave` 后，列表中出现 `HomeWeave` 条目并可安装，`0.1.1` 装成 `state: started`、`boot: auto`。Phase 1 结束时该项没有任何实机证据，只能记为"待验证"；该结论已在 0.1.1 上关闭，逐项结果见 §11.1。注意侧边栏面板（0.1.2 起为 `ingress_panel: true`）在 Phase 5 之前打开的是空路由，返回 404 属既定后果（S2），不应记为缺陷。
+
+### 11.1 真机验证记录（0.1.1 → 0.1.2）
+
+环境：HA Green、`aarch64`、Supervisor 2026.10.4、Core 2026.10.2。
+
+| 项 | 0.1.1 实测 |
+|---|---|
+| 安装 | ✅ `state: started`、`boot: auto`。GHCR 直连经 `d.fashgh.com` 加速器拉取 19 分钟 0 字节；改用 `ghcr.dockerproxy.net` 手工下载 13 个 blob、逐个 `sha256sum` 校验后组装 `docker load`，Supervisor 见到本地镜像即跳过拉取。**属网络环境问题，不是镜像缺陷** |
+| `/data` 可写 | ❌ `/data` 为 `root:root`，进程 uid 1000 无法写入，启动即 `exit 78 / dir_readonly`。手工 `chown -R 1000:1000 /mnt/data/supervisor/apps/data/<slug>` 后启动成功 |
+| `/health/ready` | ✅ 200，`database ok`、`disk ok`（99 GiB 空闲）、`migrations: unknown (table_missing)` |
+| `/health/live` | ✅ `{"status":"ok"}` 200 |
+| 镜像健康检查 | ✅ 容器 `Up`，健康检查通过 |
+| `ha apps stop` 耗时 / `ExitCode` / 日志顺序 | ⬜ 未执行 |
+| watchdog 探活重启 | ⬜ 未执行 |
+| 日志脱敏（金丝雀） | ⬜ 未执行 |
+| `options.json` 落盘 | ⬜ 未执行 |
+| ingress 打开后的响应 | ⬜ 未记录（应为 404，不是 502） |
+
+**0.1.1 的缺陷**：`/data` 属主由 Supervisor 决定，镜像内 `USER node` 在全新安装上必然失败。Dockerfile 里构建期的 `chown node:node /data` 会被 Supervisor 的 bind mount 遮蔽，所以它只能让无挂载的 `docker run` 通过，掩盖了真机行为。0.1.2 改为：镜像以 root 启动 → `docker/entrypoint.sh` 把 `/data` 交给 `node` → `exec gosu node` 降权运行服务；D2 规则只有在读到该脚本并确认它 `chown -R node:node /data` 且 `exec gosu node "$@"` 时才允许 root，`assert-image.sh` 的第 10 项断言容器内 `id -u` 为 1000 且 `/data` 可写。
+
+`migrations: unknown` 不是缺陷：镜像不含 prisma CLI、不执行迁移（D-06），表由 Phase 4 建；该状态不参与 `/health/ready` 的状态码。
 
 ## 12. 官方参考
 
