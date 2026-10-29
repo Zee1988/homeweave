@@ -115,8 +115,13 @@ FROM node:22-bookworm-slim AS runtime
 # Prisma's engine naming is tied to the OpenSSL series (bookworm = 3.0.x) and
 # ca-certificates is needed for any outbound TLS. Both are installed explicitly
 # instead of assumed present in the slim base (02-RESEARCH.md §3.4).
+#
+# gosu is the privilege-dropping half of docker/entrypoint.sh (0.1.2). It is the
+# smallest tool that can exec a child as another user without forking: `su` would
+# fork, leave a root PID 1 behind, and swallow the SIGTERM that the 8 s drain
+# budget depends on.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends openssl ca-certificates \
+ && apt-get install -y --no-install-recommends openssl ca-certificates gosu \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
@@ -133,9 +138,16 @@ ENV NODE_ENV=production
 ENV DATABASE_URL=file:/data/homeweave.db
 WORKDIR /app
 
-# /data is the Home Assistant App persistent volume. Creating it with the right
-# owner means a first-run write succeeds even though the process is not root;
-# VOLUME is deliberately not declared (Supervisor mounts it explicitly).
+# /data is the Home Assistant App persistent volume. The directory is created here,
+# owned by node, so a bare `docker run` with no mount still starts and so the image
+# assertions -- which run the image without volumes -- see a writable /data.
+#
+# This ownership does NOT survive a real install: Supervisor bind-mounts its own
+# /data over this directory and it arrives owned by root:root. On 0.1.1 that made
+# every fresh install die with exit 78 / dir_readonly before it opened a port.
+# docker/entrypoint.sh now fixes the ownership on every start. VOLUME stays absent;
+# Supervisor mounts /data explicitly and a declared volume would add an anonymous,
+# unbacked one.
 RUN mkdir -p /data && chown node:node /data
 
 # Four paths, nothing else. `dist/` already contains dist/generated/prisma (the
@@ -151,8 +163,17 @@ COPY --from=build --chown=node:node /app/apps/api/package.json ./package.json
 # with its `runtime/` subpath intact. It is in `dependencies`, and `--prod` keeps it.
 # The `prisma` CLI is a devDependency and must stay out (IMG-02).
 
-USER node
+# The privilege-dropping entrypoint, copied from `docker/`. It cannot live under
+# `homeweave_app/`: that tree is in .dockerignore (Supervisor reads it from the
+# repository, the image build never does).
+COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
+
+# USER root is the one place this image runs as root, and it lasts exactly as long
+# as one `chown` of /data. The entrypoint then execs `gosu node`, so the server is
+# uid 1000 from that point on. Rule D2 in scripts/validate-dockerfile.mjs accepts a
+# root USER only because it also reads this script and requires it to prove the drop.
+USER root
 
 EXPOSE 8099
-
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node","dist/main.js"]

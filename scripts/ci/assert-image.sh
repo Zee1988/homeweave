@@ -12,7 +12,7 @@
 # 02-04). That link is the whole reason the file lives under scripts/ci/: an
 # assertion nobody invokes is a comment with extra steps.
 #
-# Nine checks, in order:
+# Ten checks, in order:
 #   1. devDependencies absent      (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)
 #   2. sources absent              (no /app/src, no *.ts, no *.spec.ts outside node_modules)
 #   3. source maps absent          (no *.map outside node_modules)
@@ -22,6 +22,7 @@
 #   7. no secret in image history  (docker history --no-trunc)
 #   8. no secret in the filesystem (.env / .env.* / *.pem / *.key outside node_modules)
 #   9. liveness endpoint answers    (/health/live == 200 from inside the running container)
+#  10. unprivileged runtime user   (uid 1000 and a writable /data, after the root entrypoint dropped)
 #
 # Exit codes: 0 = all checks passed, 1 = at least one failed or a precondition was
 # not met. There is no third outcome and no "skipped" exit path: an unrunnable check
@@ -86,9 +87,9 @@ leaked=$(docker run --rm "$IMAGE" sh -c '
   done
 ')
 if [ -z "$leaked" ]; then
-  pass "1/9 devDependencies absent (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)"
+  pass "1/10 devDependencies absent (typescript, @nestjs/cli, jest, eslint, ts-node, prisma)"
 else
-  fail "1/9 devDependencies present in the image: $(echo "$leaked" | tr '\n' ' ')"
+  fail "1/10 devDependencies present in the image: $(echo "$leaked" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -99,9 +100,9 @@ sources=$(docker run --rm "$IMAGE" sh -c '
   if [ -d /app/src ]; then echo "LEAK:/app/src"; fi
 ')
 if [ -z "$sources" ]; then
-  pass "2/9 sources absent (no /app/src, no *.ts, no *.spec.ts outside node_modules)"
+  pass "2/10 sources absent (no /app/src, no *.ts, no *.spec.ts outside node_modules)"
 else
-  fail "2/9 source files present in the image: $(echo "$sources" | tr '\n' ' ')"
+  fail "2/10 source files present in the image: $(echo "$sources" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -113,9 +114,9 @@ maps=$(docker run --rm "$IMAGE" sh -c '
   find /app -path /app/node_modules -prune -o -type f -name "*.map" -print
 ')
 if [ -z "$maps" ]; then
-  pass "3/9 no *.map outside node_modules"
+  pass "3/10 no *.map outside node_modules"
 else
-  fail "3/9 source maps present in the image: $(echo "$maps" | tr '\n' ' ')"
+  fail "3/10 source maps present in the image: $(echo "$maps" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -134,9 +135,9 @@ artifacts=$(docker run --rm "$IMAGE" sh -c '
   exit "$missing"
 ' || true)
 if [ -n "$artifacts" ] && ! echo "$artifacts" | grep -q '^MISSING:'; then
-  pass "4/9 artifacts present ($(echo "$artifacts" | tr '\n' ' '))"
+  pass "4/10 artifacts present ($(echo "$artifacts" | tr '\n' ' '))"
 else
-  fail "4/9 artifacts missing from the image: $(echo "$artifacts" | tr '\n' ' ')"
+  fail "4/10 artifacts missing from the image: $(echo "$artifacts" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -171,22 +172,22 @@ case "$decision" in
       *) engine_target="" ;;
     esac
     if [ -z "$engine_target" ]; then
-      fail "5/9 NATIVE_ENGINE but the container reported an arch with no known engine target: '$container_arch'"
+      fail "5/10 NATIVE_ENGINE but the container reported an arch with no known engine target: '$container_arch'"
     else
       engine_file=$(docker run --rm "$IMAGE" sh -c "find /app -name '*${engine_target}*.so.node' -print | head -n 1")
       if [ -n "$engine_file" ]; then
-        pass "5/9 engine matches architecture $container_arch ($engine_target): $engine_file"
+        pass "5/10 engine matches architecture $container_arch ($engine_target): $engine_file"
       else
-        fail "5/9 NATIVE_ENGINE but no engine matching '$engine_target' exists for arch '$container_arch'"
+        fail "5/10 NATIVE_ENGINE but no engine matching '$engine_target' exists for arch '$container_arch'"
       fi
     fi
     ;;
   RUST_FREE)
     echo "  - skipped (RUST_FREE): Prisma 7 uses the WASM query compiler, there is no native engine file to match against process.arch"
-    pass "5/9 engine architecture check resolved by ENGINE_DECISION=RUST_FREE"
+    pass "5/10 engine architecture check resolved by ENGINE_DECISION=RUST_FREE"
     ;;
   *)
-    fail "5/9 ENGINE_DECISION unreadable or invalid at $ENGINE_DECISION_FILE (expected NATIVE_ENGINE or RUST_FREE, got '${decision:-<empty>}')"
+    fail "5/10 ENGINE_DECISION unreadable or invalid at $ENGINE_DECISION_FILE (expected NATIVE_ENGINE or RUST_FREE, got '${decision:-<empty>}')"
     ;;
 esac
 
@@ -212,9 +213,9 @@ done
 
 running=$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)
 if [ "$started" -eq 1 ] && [ "$running" = "true" ]; then
-  pass "6/9 container started and is still running (startup log line seen, State.Running=true)"
+  pass "6/10 container started and is still running (startup log line seen, State.Running=true)"
 else
-  fail "6/9 container did not start cleanly (startup log seen=$started, State.Running=$running)"
+  fail "6/10 container did not start cleanly (startup log seen=$started, State.Running=$running)"
   docker logs "$cid" 2>&1 | tail -n 40 || true
 fi
 
@@ -227,9 +228,9 @@ fi
 history_hits=$(docker history --no-trunc "$IMAGE" 2>/dev/null | \
   grep -E 'ghp_|github_pat_|password=|secret=|BEGIN [A-Z ]*PRIVATE KEY' || true)
 if [ -z "$history_hits" ]; then
-  pass "7/9 no secret pattern in docker history --no-trunc"
+  pass "7/10 no secret pattern in docker history --no-trunc"
 else
-  fail "7/9 secret pattern found in the image history: $(echo "$history_hits" | head -n 3 | cut -c1-200 | tr '\n' ' ')"
+  fail "7/10 secret pattern found in the image history: $(echo "$history_hits" | head -n 3 | cut -c1-200 | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -242,9 +243,9 @@ fs_hits=$(docker run --rm "$IMAGE" sh -c '
   find / -path "*/node_modules/*" -prune -o -type f \( -name ".env" -o -name ".env.*" -o -name "*.pem" -o -name "*.key" \) -print 2>/dev/null
 ' || true)
 if [ -z "$fs_hits" ]; then
-  pass "8/9 no .env / .env.* / *.pem / *.key outside node_modules"
+  pass "8/10 no .env / .env.* / *.pem / *.key outside node_modules"
 else
-  fail "8/9 secret files found in the image filesystem: $(echo "$fs_hits" | tr '\n' ' ')"
+  fail "8/10 secret files found in the image filesystem: $(echo "$fs_hits" | tr '\n' ' ')"
 fi
 
 # ---------------------------------------------------------------------------
@@ -284,10 +285,40 @@ while [ "$attempts" -lt 10 ]; do
 done
 
 if [ "$live_ok" -eq 1 ]; then
-  pass "9/9 /health/live answered 200 inside the container after $attempts attempt(s)"
+  pass "9/10 /health/live answered 200 inside the container after $attempts attempt(s)"
 else
-  fail "9/9 /health/live did not answer 200 inside the container after $attempts attempt(s): $live_detail"
+  fail "9/10 /health/live did not answer 200 inside the container after $attempts attempt(s): $live_detail"
   docker logs "$cid" 2>&1 | tail -n 20 || true
+fi
+
+# ---------------------------------------------------------------------------
+# 10. The server is uid 1000 and /data is writable (0.1.2).
+#
+#     The image starts as root so docker/entrypoint.sh can hand /data to node:
+#     Supervisor bind-mounts it as root:root, which is what made every 0.1.1 install
+#     die with exit 78 / dir_readonly. A root that never dropped would still pass
+#     checks 1-9, so the drop is asserted here instead of assumed from the Dockerfile.
+#
+#     This container has no /data mount, so the chown is a no-op; what is observable
+#     -- and therefore what is checked -- is that the server ended up as uid 1000 and
+#     can still write the directory.
+# ---------------------------------------------------------------------------
+runtime_uid=""
+if [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)" = "true" ]; then
+  runtime_uid=$(docker exec "$cid" id -u 2>/dev/null | tr -d '\r\n' || true)
+fi
+
+data_writable=0
+if [ "$runtime_uid" = "1000" ]; then
+  if docker exec "$cid" sh -c 'touch /data/.probe && rm /data/.probe' 2>/dev/null; then
+    data_writable=1
+  fi
+fi
+
+if [ "$runtime_uid" = "1000" ] && [ "$data_writable" -eq 1 ]; then
+  pass "10/10 the server runs as uid 1000 and /data is writable"
+else
+  fail "10/10 the server is not the unprivileged runtime user, or /data is not writable (uid='${runtime_uid:-<none>}', writable=$data_writable); the entrypoint did not complete its privilege drop"
 fi
 
 echo
@@ -295,4 +326,4 @@ if [ "$failures" -ne 0 ]; then
   printf '✗ assert-image failed: %s check(s) failed\n' "$failures" >&2
   exit 1
 fi
-printf '✓ all 9 image assertions passed\n'
+printf '✓ all 10 image assertions passed\n'

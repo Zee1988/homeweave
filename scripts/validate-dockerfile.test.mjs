@@ -57,8 +57,8 @@ const GOOD_IGNORE = [
   '',
 ].join('\n');
 
-function run(dockerfileText, dockerignoreText = GOOD_IGNORE) {
-  return validateDockerfile({ dockerfileText, dockerignoreText });
+function run(dockerfileText, dockerignoreText = GOOD_IGNORE, entrypointSource = null) {
+  return validateDockerfile({ dockerfileText, dockerignoreText, entrypointSource });
 }
 
 /** All failure codes, for readable assertions. */
@@ -112,6 +112,31 @@ test('D2: USER root fails even though a USER instruction exists', () => {
   const failures = result.failures.filter((f) => f.code === 'D2');
   assert.equal(failures.length, 1, 'the missing-USER check must not also fire');
   assert.match(failures[0].message, /non-root user/);
+});
+
+// 0.1.2 -- the single root USER this image carries. It exists because Supervisor
+// bind-mounts /data as root:root; the waiver is granted to the *script*, which is
+// read and must chown /data then exec gosu node. Both directions are locked here:
+// without these, "root is allowed when the entrypoint drops privileges" would be a
+// claim nobody verifies.
+const ROOTED = GOOD.replace('USER node', 'USER root\nENTRYPOINT ["/entrypoint.sh"]');
+const DROPPING_SCRIPT = '#!/bin/sh\nchown -R node:node /data\nexec gosu node "$@"\n';
+
+test('D2: a root USER passes when the entrypoint chowns /data and execs gosu node', () => {
+  const result = run(ROOTED, GOOD_IGNORE, DROPPING_SCRIPT);
+  assert.deepEqual(codes(result), []);
+});
+
+test('D2: a root USER still fails when the script chowns but never drops privileges', () => {
+  const result = run(ROOTED, GOOD_IGNORE, '#!/bin/sh\nchown -R node:node /data\nexec node "$@"\n');
+  assert.deepEqual(codes(result), ['D2']);
+  assert.match(result.failures[0].message, /does not drop privileges/);
+});
+
+test('D2: an ENTRYPOINT whose script cannot be read does not qualify', () => {
+  const result = run(ROOTED);
+  assert.deepEqual(codes(result), ['D2']);
+  assert.match(result.failures[0].message, /not readable/);
 });
 
 test('D3: copying the whole build context into the runtime stage fails', () => {

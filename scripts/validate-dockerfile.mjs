@@ -64,6 +64,16 @@ const REQUIRED_RUNTIME_PORT = '8099';
 const RUNTIME_CMD = /^CMD\s+\[\s*"node"\s*,\s*"dist\/main\.js"\s*\]$/i;
 
 /**
+ * Where the privilege-dropping entrypoint lands inside the runtime stage.
+ *
+ * 0.1.2 makes one root USER legal, because the Supervisor bind-mounts /data as
+ * root:root and the server (uid 1000) cannot open the database until something
+ * owns it. The waiver is not granted by a comment: the script is read and must
+ * chown /data then exec gosu node. See `entrypointDropsPrivileges`.
+ */
+export const ENTRYPOINT_DEST = '/entrypoint.sh';
+
+/**
  * Remove full-line `#` comments and join backslash continuations, so every later
  * rule sees one instruction per element.
  *
@@ -148,6 +158,52 @@ function instruction(line) {
 }
 
 /**
+ * Sources of every `COPY`/`ADD` that writes to `destPath`, in file order.
+ *
+ * Used to find which script in the repository actually becomes
+ * `ENTRYPOINT_DEST`, instead of assuming a path and quietly reading a stale file
+ * after someone moves it.
+ */
+export function copySourcesFor(dockerfileText, destPath) {
+  const sources = [];
+
+  for (const line of logicalLines(dockerfileText ?? '')) {
+    const name = instruction(line);
+    if (name !== 'COPY' && name !== 'ADD') continue;
+
+    // Drop flags (`--chmod=755`, `--from=build`); what remains is src... dest.
+    const tokens = line.trim().split(/\s+/).slice(1).filter((token) => !token.startsWith('--'));
+    if (tokens.length < 2) continue;
+    if (tokens[tokens.length - 1] !== destPath) continue;
+
+    sources.push(...tokens.slice(0, -1));
+  }
+
+  return sources;
+}
+
+/**
+ * True when the entrypoint script provably drops privileges.
+ *
+ * Both halves are required, and both are read from the script's text:
+ *   - `chown -R node:node /data` — the ownership fix that makes 0.1.1's exit 78
+ *     impossible, and the reason a root USER is tolerated at all;
+ *   - `exec gosu node "$@"` — the drop itself. `exec` matters: without it the shell
+ *     stays as PID 1, which intercepts SIGTERM and breaks the drain budget.
+ *
+ * A script that merely mentions gosu, or hard-codes the command instead of passing
+ * `"$@"`, does not satisfy this.
+ */
+export function entrypointDropsPrivileges(source) {
+  if (typeof source !== 'string' || source.trim() === '') return false;
+
+  const chowns = /\bchown\s+-R\s+node:node\s+\/data\b/.test(source);
+  const drops = /exec\s+gosu\s+node\s+"\$@"/.test(source);
+
+  return chowns && drops;
+}
+
+/**
  * Translate one `.dockerignore` glob into a RegExp.
  *
  * `*` never crosses a `/`, `?` matches one non-`/` character, and `**` (with or
@@ -223,7 +279,7 @@ export function ignoresPath(ignoreLine, target) {
  * Returns `{ ok, checks, failures }`; `failures` entries are `{ code, message }`
  * so the CLI and the tests share one rule set and one wording.
  */
-export function validateDockerfile({ dockerfileText, dockerignoreText = null } = {}) {
+export function validateDockerfile({ dockerfileText, dockerignoreText = null, entrypointSource = null } = {}) {
   const failures = [];
   let checks = 0;
 
@@ -248,6 +304,12 @@ export function validateDockerfile({ dockerfileText, dockerignoreText = null } =
   const runtimeLines = finalStage === null ? [] : finalStage.lines;
 
   // D2 -- the runtime stage runs as a non-root user.
+  //
+  // One exception, added in 0.1.2: Supervisor bind-mounts /data as root:root, so a
+  // fresh install cannot write its database as uid 1000 (0.1.1 died with exit 78).
+  // A root USER is legal only alongside an ENTRYPOINT whose script is READ HERE and
+  // proves it chowns /data then execs gosu node. The waiver is about the code, not
+  // about a comment claiming it, and it is the only door.
   const userInstructions = runtimeLines
     .filter((line) => instruction(line) === 'USER')
     .map((line) => line.trim().split(/\s+/)[1] ?? '');
@@ -257,10 +319,12 @@ export function validateDockerfile({ dockerfileText, dockerignoreText = null } =
     `the ${RUNTIME_STAGE} stage has no USER instruction, so the container runs as root`,
   );
   const finalUser = userInstructions.length > 0 ? userInstructions[userInstructions.length - 1] : null;
+  const rootUser = finalUser === null || finalUser === 'root' || finalUser === '0';
+  const entrypoints = runtimeLines.filter((line) => instruction(line) === 'ENTRYPOINT');
   check(
-    finalUser !== null && finalUser !== 'root' && finalUser !== '0',
+    !rootUser || (entrypoints.length === 1 && entrypointDropsPrivileges(entrypointSource)),
     'D2',
-    `the ${RUNTIME_STAGE} stage must run as a non-root user, found USER ${finalUser ?? '(none)'}`,
+    `the ${RUNTIME_STAGE} stage must run as a non-root user, found USER ${finalUser ?? '(none)'}; root is allowed only with an ENTRYPOINT that chowns /data and execs gosu node (entrypoints=${entrypoints.length}, script=${entrypointSource === null ? 'not readable' : 'does not drop privileges'})`,
   );
 
   // D3 -- the runtime stage never copies the whole build context.
@@ -379,7 +443,26 @@ export function validateDockerfile({ dockerfileText, dockerignoreText = null } =
   return { ok: failures.length === 0, checks, failures, stages };
 }
 
-/** Read the two files the validator owns, tolerating a missing `.dockerignore`. */
+/**
+ * Read the script that becomes `ENTRYPOINT_DEST`, following the Dockerfile's own
+ * COPY instead of a hard-coded path -- a comment saying "this is the entrypoint"
+ * cannot drift away from the file that is actually copied in.
+ *
+ * Returns null when the Dockerfile copies no such script, or the file is missing:
+ * D2 then reports "not readable" rather than passing by default.
+ */
+export function readEntrypointSource(root, dockerfileText) {
+  const sources = copySourcesFor(dockerfileText, ENTRYPOINT_DEST);
+  if (sources.length === 0) return null;
+
+  try {
+    return readFileSync(path.join(root, sources[sources.length - 1]), 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+/** Read the files the validator owns, tolerating a missing `.dockerignore` or entrypoint. */
 export function readInputs(root = process.cwd()) {
   const dockerfilePath = path.join(root, DOCKERFILE_FILE);
   const dockerignorePath = path.join(root, DOCKERIGNORE_FILE);
@@ -393,7 +476,7 @@ export function readInputs(root = process.cwd()) {
     dockerignoreText = null;
   }
 
-  return { dockerfileText, dockerignoreText };
+  return { dockerfileText, dockerignoreText, entrypointSource: readEntrypointSource(root, dockerfileText) };
 }
 
 /** Human-readable failure lines, shared by the CLI and the tests. */
