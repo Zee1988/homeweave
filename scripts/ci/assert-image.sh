@@ -305,12 +305,18 @@ fi
 # ---------------------------------------------------------------------------
 runtime_uid=""
 if [ -n "$cid" ] && [ "$(docker inspect -f '{{.State.Running}}' "$cid" 2>/dev/null || echo false)" = "true" ]; then
-  runtime_uid=$(docker exec "$cid" id -u 2>/dev/null | tr -d '\r\n' || true)
+  # PID 1, not `id -u`. `docker exec` starts at the image's USER -- which is root here by
+  # design -- so `id -u` reports 0 no matter what the entrypoint did, and would fail this
+  # check on a perfectly good image (it did, on the first 0.1.2 run). The process that
+  # actually serves traffic is PID 1, the one the entrypoint exec'd into.
+  runtime_uid=$(docker exec "$cid" awk '/^Uid:/{print $2}' /proc/1/status 2>/dev/null | tr -d '\r\n' || true)
 fi
 
 data_writable=0
 if [ "$runtime_uid" = "1000" ]; then
-  if docker exec "$cid" sh -c 'touch /data/.probe && rm /data/.probe' 2>/dev/null; then
+  # `-u node`, because plain exec would run as root and prove nothing about the account
+  # the server uses.
+  if docker exec -u node "$cid" sh -c 'touch /data/.probe && rm /data/.probe' 2>/dev/null; then
     data_writable=1
   fi
 fi
